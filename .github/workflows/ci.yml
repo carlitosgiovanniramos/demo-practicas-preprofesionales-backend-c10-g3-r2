@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: practicas
+          POSTGRES_PASSWORD: practicas
+          POSTGRES_DB: practicas
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U practicas"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://practicas:practicas@localhost:5432/practicas?schema=public
+      JWT_SECRET: ci-secret
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # Sin `version:` a propósito: la versión de pnpm se toma del campo
+      # "packageManager" del package.json (fuente única de verdad).
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - run: pnpm install --no-frozen-lockfile
+
+      - name: Aplicar migraciones
+        run: pnpm db:deploy
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint (reporte para el grader de Yura)
+        run: pnpm lint:report
+        continue-on-error: true
+
+      - name: Tests con cobertura
+        run: pnpm test:cov
+
+      - name: Duplicación
+        run: pnpm dup
+        continue-on-error: true
+
+      - name: Build
+        run: pnpm build
+
+      - name: Resumen
+        if: always()
+        run: |
+          echo "### Reporte de calidad" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f coverage/coverage-summary.json ]; then
+            node -pe "
+              const c = require('./coverage/coverage-summary.json').total;
+              \`- Cobertura de líneas: \${c.lines.pct}%\n- Cobertura de ramas: \${c.branches.pct}%\`
+            " >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f eslint-report.json ]; then
+            node -pe "
+              const r = require('./eslint-report.json');
+              const all = r.flatMap(f => f.messages || []);
+              const cc = all.filter(m => m.ruleId === 'complexity').length;
+              \`- Violaciones de lint: \${all.length}\n- Funciones sobre el umbral de complejidad: \${cc}\`
+            " >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Subir artefactos de calidad
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: quality-reports
+          path: |
+            coverage/lcov.info
+            coverage/coverage-summary.json
+            eslint-report.json
+            .jscpd/jscpd-report.json
+          if-no-files-found: warn

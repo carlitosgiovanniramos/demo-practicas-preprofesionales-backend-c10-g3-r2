@@ -1,0 +1,250 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  STUDENT
+  TUTOR
+  COMPANY
+  COORDINATOR
+}
+
+enum OfferStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+}
+
+enum ApplicationStatus {
+  SUBMITTED
+  INTERVIEW
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+enum PlacementStatus {
+  PENDING_DOCS
+  ACTIVE
+  COMPLETED
+  ABANDONED
+  SUSPENDED
+}
+
+enum HourLogStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+enum DocumentKind {
+  AGREEMENT
+  INSURANCE
+  REPORT
+  EVIDENCE
+}
+
+enum DocumentStatus {
+  PENDING
+  VALIDATED
+  REJECTED
+}
+
+enum EvaluationKind {
+  TUTOR
+  COMPANY
+  SELF
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  password  String
+  fullName  String
+  role      Role     @default(STUDENT)
+  createdAt DateTime @default(now())
+
+  company           Company?      @relation(fields: [companyId], references: [id])
+  companyId         Int?
+  applications      Application[]
+  studentPlacements Placement[]   @relation("StudentPlacements")
+  tutorPlacements   Placement[]   @relation("TutorPlacements")
+  evaluations       Evaluation[]
+  reviewedHourLogs  HourLog[]     @relation("HourLogReviewer")
+  uploadedDocuments  Document[]   @relation("DocUploader")
+  validatedDocuments Document[]   @relation("DocValidator")
+
+  @@map("users")
+}
+
+model Company {
+  id           Int      @id @default(autoincrement())
+  taxId        String   @unique
+  name         String
+  sector       String
+  contactEmail String
+  verified     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  users      User[]
+  offers     Offer[]
+  placements Placement[]
+
+  @@map("companies")
+}
+
+model Offer {
+  id            Int         @id @default(autoincrement())
+  companyId     Int
+  title         String
+  description   String
+  modality      String
+  seats         Int
+  requiredHours Int
+  periodStart   DateTime
+  periodEnd     DateTime
+  status        OfferStatus @default(DRAFT)
+  publishedAt   DateTime?
+  createdAt     DateTime    @default(now())
+
+  company      Company       @relation(fields: [companyId], references: [id])
+  applications Application[]
+
+  @@index([status, periodStart])
+  @@map("offers")
+}
+
+model Application {
+  id          Int               @id @default(autoincrement())
+  offerId     Int
+  studentId   Int
+  status      ApplicationStatus @default(SUBMITTED)
+  motivation  String
+  submittedAt DateTime          @default(now())
+  decidedAt   DateTime?
+
+  offer     Offer      @relation(fields: [offerId], references: [id])
+  student   User       @relation(fields: [studentId], references: [id])
+  placement Placement?
+
+  @@unique([offerId, studentId])
+  @@index([offerId, status])
+  @@map("applications")
+}
+
+model Placement {
+  id            Int             @id @default(autoincrement())
+  applicationId Int             @unique
+  studentId     Int
+  tutorId       Int
+  companyId     Int
+  startDate     DateTime
+  endDate       DateTime
+  requiredHours Int
+  status        PlacementStatus @default(PENDING_DOCS)
+
+  version   Int       @default(1)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  application Application  @relation(fields: [applicationId], references: [id])
+  student     User         @relation("StudentPlacements", fields: [studentId], references: [id])
+  tutor       User         @relation("TutorPlacements", fields: [tutorId], references: [id])
+  company     Company      @relation(fields: [companyId], references: [id])
+  hourLogs    HourLog[]
+  evaluations Evaluation[]
+  documents   Document[]
+
+  @@index([studentId, status])
+  @@index([updatedAt, id])
+  @@map("placements")
+}
+
+model HourLog {
+  id          Int           @id @default(autoincrement())
+  placementId Int
+  date        DateTime
+  startTime   String
+  endTime     String
+  hours       Float
+  activity    String
+  status      HourLogStatus @default(DRAFT)
+  reviewedById Int?
+  reviewedAt  DateTime?
+  reviewNote  String?
+
+  version   Int       @default(1)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  placement  Placement @relation(fields: [placementId], references: [id])
+  reviewedBy User?     @relation("HourLogReviewer", fields: [reviewedById], references: [id])
+
+  @@index([updatedAt, id])
+  @@map("hour_logs")
+}
+
+model Evaluation {
+  id          Int            @id @default(autoincrement())
+  placementId Int
+  evaluatorId Int
+  kind        EvaluationKind
+  period      String
+  scores      Json
+  comment     String?
+  submittedAt DateTime?
+
+  version   Int       @default(1)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  placement Placement @relation(fields: [placementId], references: [id])
+  evaluator User      @relation(fields: [evaluatorId], references: [id])
+
+  @@index([updatedAt, id])
+  @@map("evaluations")
+}
+
+model Document {
+  id           Int            @id @default(autoincrement())
+  placementId  Int
+  kind         DocumentKind
+  filename     String
+  mimeType     String
+  size         Int
+  storageKey   String
+  status       DocumentStatus @default(PENDING)
+  uploadedById Int
+  validatedById Int?
+
+  version   Int       @default(1)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  placement   Placement @relation(fields: [placementId], references: [id])
+  uploadedBy  User      @relation("DocUploader", fields: [uploadedById], references: [id])
+  validatedBy User?     @relation("DocValidator", fields: [validatedById], references: [id])
+
+  @@index([updatedAt, id])
+  @@map("documents")
+}
+
+model SyncOperation {
+  clientOpId String   @id
+  userId     Int
+  response   Json
+  createdAt  DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@map("sync_operations")
+}

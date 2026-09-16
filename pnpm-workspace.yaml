@@ -1,0 +1,12 @@
+# Configuración de pnpm (desde pnpm 10 los ajustes ya no se leen del campo
+# "pnpm" del package.json: viven aquí).
+#
+# pnpm bloquea por defecto los scripts de instalación de las dependencias.
+# Estos paquetes sí los necesitan para dejar listos sus binarios nativos
+# (motor de Prisma, binario de esbuild, binario de SWC).
+allowBuilds:
+  "@prisma/client": true
+  "@prisma/engines": true
+  "@swc/core": true
+  esbuild: true
+  prisma: true

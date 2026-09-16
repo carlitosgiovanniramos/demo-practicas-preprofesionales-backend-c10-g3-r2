@@ -1,0 +1,6 @@
+# El equipo del proyecto revisa todo por defecto.
+*                       @equipo-practicas
+
+# El módulo de sincronización es el más delicado: requiere revisión del líder.
+/src/sync/              @lider-equipo @equipo-practicas
+/src/auth/              @lider-equipo @equipo-practicas

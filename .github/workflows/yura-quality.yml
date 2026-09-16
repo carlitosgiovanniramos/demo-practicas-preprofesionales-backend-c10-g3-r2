@@ -1,0 +1,32 @@
+name: Yura Code Quality
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [master, main]
+
+permissions:
+  checks: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  quality:
+    if: github.event_name == 'pull_request'
+    uses: yura-edu/ci-workflows/.github/workflows/new-code-quality.yml@v1
+    with:
+      language: typescript
+      test_command: 'npm test -- --coverage'
+      base_ref: ${{ github.event.pull_request.base.ref }}
+
+  branch-state:
+    if: github.event_name == 'push'
+    concurrency:
+      group: yura-branch-state-${{ github.ref }}
+      cancel-in-progress: true
+    uses: yura-edu/ci-workflows/.github/workflows/new-code-quality.yml@v1
+    with:
+      language: typescript
+      test_command: 'npm test -- --coverage'
+      mode: branch_state
