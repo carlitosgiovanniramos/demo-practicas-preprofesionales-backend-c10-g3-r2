@@ -82,6 +82,27 @@ describe('SyncService', () => {
     expect(prisma.$transaction).not.toHaveBeenCalled()
   })
 
+  it('D-01: la identidad de la operación es (userId, clientOpId), no clientOpId solo', async () => {
+    prisma.placement.findUnique.mockResolvedValue({ id: 1, studentId: 5 })
+    prisma.hourLog.create.mockResolvedValue({ id: 1, version: 1 })
+
+    await service.push(5, [
+      {
+        clientOpId: 'shared-uuid',
+        entity: 'hourLog',
+        op: 'create',
+        baseVersion: null,
+        payload: { placementId: 1, date: '2026-04-02', startTime: '08:00', endTime: '12:00', hours: 4, activity: 'Soporte' },
+      },
+    ])
+
+    // Si el selector fuera { clientOpId } a secas, un usuario distinto con el
+    // mismo UUID leería (y "robaría") la respuesta de este usuario.
+    expect(prisma.syncOperation.findUnique).toHaveBeenCalledWith({
+      where: { userId_clientOpId: { userId: 5, clientOpId: 'shared-uuid' } },
+    })
+  })
+
   it('D-01: dos envíos concurrentes con el mismo clientOpId devuelven la misma respuesta y aplican una sola vez', async () => {
     prisma.placement.findUnique.mockResolvedValue({ id: 1, studentId: 5 })
     prisma.hourLog.create.mockResolvedValue({ id: 77, version: 1 })

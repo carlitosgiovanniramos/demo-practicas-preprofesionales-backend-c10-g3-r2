@@ -12,6 +12,13 @@ function isDuplicateClientOpId(err: unknown): boolean {
   return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002'
 }
 
+// La identidad de una operación es (userId, clientOpId): el UUID lo genera
+// el cliente y solo es único dentro de su propia sesión, así que sin userId
+// dos usuarios distintos con el mismo clientOpId colisionarían.
+function syncOpKey(userId: number, clientOpId: string) {
+  return { userId_clientOpId: { userId, clientOpId } }
+}
+
 @Injectable()
 export class SyncService {
   constructor(private readonly prisma: PrismaService) {}
@@ -60,7 +67,7 @@ export class SyncService {
     // Camino feliz de un reintento secuencial: la operación ya quedó
     // registrada de una pasada anterior, devolvemos la misma respuesta sin
     // volver a tocar la tabla de negocio.
-    const existing = await this.prisma.syncOperation.findUnique({ where: { clientOpId: op.clientOpId } })
+    const existing = await this.prisma.syncOperation.findUnique({ where: syncOpKey(userId, op.clientOpId) })
     if (existing) {
       return existing.response as unknown as SyncOperationResult
     }
@@ -91,8 +98,8 @@ export class SyncService {
   private async recoverFromFailedApply(userId: number, op: SyncOperationInput, err: unknown): Promise<SyncOperationResult> {
     if (isDuplicateClientOpId(err)) {
       // Perdimos la carrera: otro reintento concurrente ya comprometió su
-      // transacción con este clientOpId. Devolvemos su resultado.
-      const persisted = await this.prisma.syncOperation.findUnique({ where: { clientOpId: op.clientOpId } })
+      // transacción con este (userId, clientOpId). Devolvemos su resultado.
+      const persisted = await this.prisma.syncOperation.findUnique({ where: syncOpKey(userId, op.clientOpId) })
       if (persisted) return persisted.response as unknown as SyncOperationResult
     }
 
@@ -112,7 +119,7 @@ export class SyncService {
       })
     } catch (createErr) {
       if (isDuplicateClientOpId(createErr)) {
-        const persisted = await this.prisma.syncOperation.findUnique({ where: { clientOpId: op.clientOpId } })
+        const persisted = await this.prisma.syncOperation.findUnique({ where: syncOpKey(userId, op.clientOpId) })
         if (persisted) return persisted.response as unknown as SyncOperationResult
       }
     }
