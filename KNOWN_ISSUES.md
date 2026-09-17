@@ -5,7 +5,7 @@ dolió, no por severidad técnica.
 
 Si encuentras algo que no está acá, agrégalo. Casi seguro hay más.
 
-## D-01 · El sync duplica horas al reintentar
+## D-01 · El sync duplica horas al reintentar — RESUELTO en el back
 
 `src/offline/sync/push.ts` (front) y `src/sync/sync.service.ts` (back).
 
@@ -14,7 +14,16 @@ idénticos. Pasa más en la práctica de campo, con señal intermitente. Mandamo
 en cada operación y guardamos las operaciones en `sync_operations`, pero evidentemente algo
 no está cerrando el círculo. No tuvimos tiempo de sentarnos a entenderlo.
 
-Workaround actual: el coordinador borra los duplicados a mano.
+`SyncService.push` ahora consulta `sync_operations` por `clientOpId` antes de aplicar, y
+aplica + registra dentro de una misma transacción para que un choque concurrente en la PK
+(`clientOpId`) revierta también la escritura de negocio, no solo el registro de auditoría.
+Tests: `src/sync/sync.service.spec.ts` (mocks) y `src/sync/sync.push.integration.spec.ts`
+(Postgres real, secuencial + concurrente).
+
+Sigue pendiente el lado `src/offline/sync/push.ts` del front (repo aparte).
+
+Workaround actual (ya no debería hacer falta para hour logs): el coordinador borra los
+duplicados a mano.
 
 ## D-02 · `HourLogService` se nos fue de las manos
 
