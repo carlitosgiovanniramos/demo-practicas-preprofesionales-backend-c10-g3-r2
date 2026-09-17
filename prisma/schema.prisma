@@ -240,11 +240,16 @@ model Document {
 }
 
 model SyncOperation {
-  clientOpId String   @id
+  // clientOpId lo genera el cliente y solo promete unicidad dentro de su
+  // propia sesión: la identidad real de la operación es (userId, clientOpId),
+  // no clientOpId solo — si no, un mismo UUID de dos usuarios distintos
+  // colisionaría y uno vería la respuesta persistida del otro.
+  clientOpId String
   userId     Int
   response   Json
   createdAt  DateTime @default(now())
 
+  @@id([userId, clientOpId])
   @@index([userId, createdAt])
   @@map("sync_operations")
 }
