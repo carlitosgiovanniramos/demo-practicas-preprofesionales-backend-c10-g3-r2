@@ -2,35 +2,39 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SyncService } from './sync.service'
 import { encodeCheckpoint } from './checkpoint'
 
-function matchesKeysetWhere(
-  row: { id: number; updatedAt: Date },
-  where: Record<string, unknown> | undefined,
-): boolean {
-  if (!where) return true
+type Row = {
+  id: number
+  placementId: number
+  updatedAt: Date
+  date: Date
+  startTime: string
+  endTime: string
+  hours: number
+  activity: string
+  version: number
+}
+type Cursor = { updatedAt: Date; id: number }
+
+function extractCursor(where: Record<string, unknown> | undefined): Cursor | null {
+  if (!where) return null
   const orClauses = (where as { OR?: Array<Record<string, unknown>> }).OR
-  if (!Array.isArray(orClauses)) {
-    const upGt = (where as { updatedAt?: { gt?: Date | string } }).updatedAt?.gt
-    if (upGt != null) {
-      return row.updatedAt.getTime() > new Date(upGt).getTime()
+  if (Array.isArray(orClauses)) {
+    for (const clause of orClauses) {
+      if (clause.updatedAt instanceof Date) {
+        const idGt = (clause.id as { gt?: number } | undefined)?.gt
+        if (idGt != null) return { updatedAt: clause.updatedAt, id: idGt }
+      }
     }
-    return true
   }
-  return orClauses.some((clause) => {
-    const up = clause.updatedAt
-    const idGt = (clause.id as { gt?: number } | undefined)?.gt
-    if (up instanceof Date) {
-      if (idGt != null && row.updatedAt.getTime() === up.getTime() && row.id > idGt) {
-        return true
-      }
-    }
-    if (up && typeof up === 'object' && !(up instanceof Date) && !Array.isArray(up)) {
-      const gt = (up as { gt?: Date | string }).gt
-      if (gt != null && row.updatedAt.getTime() > new Date(gt).getTime()) {
-        return true
-      }
-    }
-    return false
-  })
+  const upGt = (where as { updatedAt?: { gt?: Date | string } }).updatedAt?.gt
+  if (upGt != null) return { updatedAt: new Date(upGt), id: 0 }
+  return null
+}
+
+function rowAfter(row: Row, cursor: Cursor | null): boolean {
+  if (!cursor) return true
+  const t = row.updatedAt.getTime() - cursor.updatedAt.getTime()
+  return t > 0 || (t === 0 && row.id > cursor.id)
 }
 
 const prisma = {
@@ -73,7 +77,8 @@ describe('SyncService', () => {
         id: 11, placementId: 1, updatedAt: new Date(ts), date: new Date(ts),
         startTime: '08:00', endTime: '12:00', hours: 4, activity: 'Soporte', version: 1,
       }]
-      return Promise.resolve(fixture.filter((r) => matchesKeysetWhere(r, args.where)))
+      const cursor = extractCursor(args.where)
+      return Promise.resolve(fixture.filter((r) => rowAfter(r, cursor)))
     })
 
     const result = await service.pull(5, since, 200)
@@ -83,10 +88,6 @@ describe('SyncService', () => {
 
   it('pagina 4.000 hourLogs sin perder ni duplicar (incluyendo mismos updatedAt)', async () => {
     const N = 4000
-    type Row = {
-      id: number; placementId: number; updatedAt: Date; date: Date
-      startTime: string; endTime: string; hours: number; activity: string; version: number
-    }
     const fixture: Row[] = []
     const base = Date.parse('2026-03-01T00:00:00.000Z')
     for (let i = 0; i < N; i++) {
@@ -106,7 +107,8 @@ describe('SyncService', () => {
     prisma.evaluation.findMany.mockResolvedValue([])
     prisma.hourLog.findMany.mockImplementation(
       async (args: { where?: Record<string, unknown>; take?: number }) => {
-        const filtered = fixture.filter((r) => matchesKeysetWhere(r, args.where))
+        const cursor = extractCursor(args.where)
+        const filtered = fixture.filter((r) => rowAfter(r, cursor))
         return Promise.resolve(args.take != null ? filtered.slice(0, args.take) : filtered)
       },
     )

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
 import { type Checkpoint, decodeCheckpoint, encodeCheckpoint } from './checkpoint'
+import { buildKeysetWhere } from './keyset'
 import type { SyncOperationInput, SyncOperationResult } from './dto/push.dto'
 
 @Injectable()
@@ -9,14 +10,7 @@ export class SyncService {
 
   async pull(userId: number, since: string | undefined, limit: number) {
     const cursor = decodeCheckpoint(since)
-    const where = cursor
-      ? {
-          OR: [
-            { updatedAt: { gt: new Date(cursor.updatedAt) } },
-            { updatedAt: new Date(cursor.updatedAt), id: { gt: cursor.id } },
-          ],
-        }
-      : {}
+    const where = buildKeysetWhere(cursor)
     const order = [{ updatedAt: 'asc' as const }, { id: 'asc' as const }]
     const scope = { placement: { OR: [{ studentId: userId }, { tutorId: userId }] } }
 
