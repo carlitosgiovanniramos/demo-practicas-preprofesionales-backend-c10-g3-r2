@@ -9,9 +9,19 @@ export class SyncService {
 
   async pull(userId: number, since: string | undefined, limit: number) {
     const cursor = decodeCheckpoint(since)
-    // El cursor avanza por updatedAt.
-    const where = cursor ? { updatedAt: { gt: new Date(cursor.updatedAt) } } : {}
-    const order = { updatedAt: 'asc' as const }
+    // Keyset pagination: si hay cursor, se avanza por (updatedAt, id) usando
+    // un OR compuesto. Evita que dos filas con la misma marca de tiempo
+    // (mismo milisegundo) se salteen la una a la otra — la segunda fila
+    // sigue entrando mientras su id sea estrictamente mayor.
+    const where = cursor
+      ? {
+          OR: [
+            { updatedAt: { gt: new Date(cursor.updatedAt) } },
+            { updatedAt: new Date(cursor.updatedAt), id: { gt: cursor.id } },
+          ],
+        }
+      : {}
+    const order = [{ updatedAt: 'asc' as const }, { id: 'asc' as const }]
     const scope = { placement: { OR: [{ studentId: userId }, { tutorId: userId }] } }
 
     const [placements, hourLogs, documents, evaluations] = await Promise.all([
@@ -26,7 +36,12 @@ export class SyncService {
     ])
 
     const newest = [...placements, ...hourLogs, ...documents, ...evaluations]
-      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0]
+      .sort((a, b) => {
+        const t = new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+        // Empate por marca de tiempo: gana el id más alto para que el cursor
+        // cubra todas las filas con ese updatedAt en la próxima página.
+        return t !== 0 ? t : b.id - a.id
+      })[0]
 
     const checkpoint: Checkpoint | null = newest
       ? { updatedAt: new Date(newest.updatedAt).toISOString(), id: newest.id }
