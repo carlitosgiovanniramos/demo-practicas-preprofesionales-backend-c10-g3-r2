@@ -1,5 +1,41 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SyncService } from './sync.service'
+import { encodeCheckpoint } from './checkpoint'
+
+type Row = {
+  id: number
+  placementId: number
+  updatedAt: Date
+  date: Date
+  startTime: string
+  endTime: string
+  hours: number
+  activity: string
+  version: number
+}
+type Cursor = { updatedAt: Date; id: number }
+
+function extractCursor(where: Record<string, unknown> | undefined): Cursor | null {
+  if (!where) return null
+  const orClauses = (where as { OR?: Array<Record<string, unknown>> }).OR
+  if (Array.isArray(orClauses)) {
+    for (const clause of orClauses) {
+      if (clause.updatedAt instanceof Date) {
+        const idGt = (clause.id as { gt?: number } | undefined)?.gt
+        if (idGt != null) return { updatedAt: clause.updatedAt, id: idGt }
+      }
+    }
+  }
+  const upGt = (where as { updatedAt?: { gt?: Date | string } }).updatedAt?.gt
+  if (upGt != null) return { updatedAt: new Date(upGt), id: 0 }
+  return null
+}
+
+function rowAfter(row: Row, cursor: Cursor | null): boolean {
+  if (!cursor) return true
+  const t = row.updatedAt.getTime() - cursor.updatedAt.getTime()
+  return t > 0 || (t === 0 && row.id > cursor.id)
+}
 
 const prisma = {
   placement: { findMany: vi.fn(), findUnique: vi.fn() },
@@ -30,6 +66,66 @@ describe('SyncService', () => {
     expect(result.changes.hourLogs).toHaveLength(1)
     expect(result.checkpoint).toBeTypeOf('string')
     expect(result.hasMore).toBe(false)
+  })
+
+  it('incluye el tie-breaker por id cuando el cursor comparte updatedAt con la fila', async () => {
+    const ts = '2026-04-01T12:00:00.000Z'
+    const since = encodeCheckpoint({ updatedAt: ts, id: 10 })
+
+    prisma.hourLog.findMany.mockImplementation(async (args: { where?: Record<string, unknown> }) => {
+      const fixture = [{
+        id: 11, placementId: 1, updatedAt: new Date(ts), date: new Date(ts),
+        startTime: '08:00', endTime: '12:00', hours: 4, activity: 'Soporte', version: 1,
+      }]
+      const cursor = extractCursor(args.where)
+      return Promise.resolve(fixture.filter((r) => rowAfter(r, cursor)))
+    })
+
+    const result = await service.pull(5, since, 200)
+
+    expect(result.changes.hourLogs.map((r: { id: number }) => r.id)).toContain(11)
+  })
+
+  it('pagina 4.000 hourLogs sin perder ni duplicar (incluyendo mismos updatedAt)', async () => {
+    const N = 4000
+    const fixture: Row[] = []
+    const base = Date.parse('2026-03-01T00:00:00.000Z')
+    for (let i = 0; i < N; i++) {
+      const updatedAt = new Date(base + Math.floor(i / 7) * 60_000)
+      fixture.push({
+        id: i + 1, placementId: 1, updatedAt, date: updatedAt,
+        startTime: '08:00', endTime: '12:00', hours: 4, activity: 'Soporte', version: 1,
+      })
+    }
+    fixture.sort((a, b) => {
+      const t = a.updatedAt.getTime() - b.updatedAt.getTime()
+      return t !== 0 ? t : a.id - b.id
+    })
+
+    prisma.placement.findMany.mockResolvedValue([])
+    prisma.document.findMany.mockResolvedValue([])
+    prisma.evaluation.findMany.mockResolvedValue([])
+    prisma.hourLog.findMany.mockImplementation(
+      async (args: { where?: Record<string, unknown>; take?: number }) => {
+        const cursor = extractCursor(args.where)
+        const filtered = fixture.filter((r) => rowAfter(r, cursor))
+        return Promise.resolve(args.take != null ? filtered.slice(0, args.take) : filtered)
+      },
+    )
+
+    const seen = new Set<number>()
+    let since: string | undefined
+    let pages = 0
+    while (true) {
+      const result = await service.pull(5, since, 200)
+      for (const r of result.changes.hourLogs) seen.add(r.id)
+      if (!result.hasMore || !result.checkpoint) break
+      since = result.checkpoint
+      pages++
+      if (pages > 100) throw new Error('demasiadas páginas — el cursor no avanza')
+    }
+
+    expect(seen.size).toBe(N)
   })
 
   it('applies a create operation and returns applied', async () => {

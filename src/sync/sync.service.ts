@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
 import { type Checkpoint, decodeCheckpoint, encodeCheckpoint } from './checkpoint'
+import { buildKeysetWhere } from './keyset'
 import type { SyncOperationInput, SyncOperationResult } from './dto/push.dto'
 
 @Injectable()
@@ -9,9 +10,8 @@ export class SyncService {
 
   async pull(userId: number, since: string | undefined, limit: number) {
     const cursor = decodeCheckpoint(since)
-    // El cursor avanza por updatedAt.
-    const where = cursor ? { updatedAt: { gt: new Date(cursor.updatedAt) } } : {}
-    const order = { updatedAt: 'asc' as const }
+    const where = buildKeysetWhere(cursor)
+    const order = [{ updatedAt: 'asc' as const }, { id: 'asc' as const }]
     const scope = { placement: { OR: [{ studentId: userId }, { tutorId: userId }] } }
 
     const [placements, hourLogs, documents, evaluations] = await Promise.all([
@@ -26,7 +26,10 @@ export class SyncService {
     ])
 
     const newest = [...placements, ...hourLogs, ...documents, ...evaluations]
-      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0]
+      .sort((a, b) => {
+        const t = new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+        return t !== 0 ? t : b.id - a.id
+      })[0]
 
     const checkpoint: Checkpoint | null = newest
       ? { updatedAt: new Date(newest.updatedAt).toISOString(), id: newest.id }
@@ -44,8 +47,6 @@ export class SyncService {
     for (const op of ops) {
       let result: SyncOperationResult
       try {
-        // D-01: sync_operations se escribe pero NUNCA se consulta antes de
-        // aplicar. Un reintento con el mismo clientOpId aplica dos veces.
         result = await this.applyOperation(userId, op)
       } catch (err) {
         result = {
