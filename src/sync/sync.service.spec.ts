@@ -1,5 +1,44 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SyncService } from './sync.service'
+import { encodeCheckpoint } from './checkpoint'
+
+// Helper: evalúa el where clause de Prisma para keyset (post-fix) o
+// updatedAt-only (pre-fix). Permite testear el comportamiento del filtro
+// sin una DB real.
+function matchesKeysetWhere(
+  row: { id: number; updatedAt: Date },
+  where: Record<string, unknown> | undefined,
+): boolean {
+  if (!where) return true
+  const orClauses = (where as { OR?: Array<Record<string, unknown>> }).OR
+  if (!Array.isArray(orClauses)) {
+    // Forma simple (pre-fix): { updatedAt: { gt: ... } }
+    const upGt = (where as { updatedAt?: { gt?: Date | string } }).updatedAt?.gt
+    if (upGt != null) {
+      return row.updatedAt.getTime() > new Date(upGt).getTime()
+    }
+    return true
+  }
+  // Forma keyset (post-fix): OR de cláusulas
+  return orClauses.some((clause) => {
+    const up = clause.updatedAt
+    const idGt = (clause.id as { gt?: number } | undefined)?.gt
+    if (up instanceof Date) {
+      // Clausula 2: updatedAt == cursor.updatedAt, id > cursor.id
+      if (idGt != null && row.updatedAt.getTime() === up.getTime() && row.id > idGt) {
+        return true
+      }
+    }
+    if (up && typeof up === 'object' && !(up instanceof Date) && !Array.isArray(up)) {
+      // Clausula 1: updatedAt > cursor.updatedAt
+      const gt = (up as { gt?: Date | string }).gt
+      if (gt != null && row.updatedAt.getTime() > new Date(gt).getTime()) {
+        return true
+      }
+    }
+    return false
+  })
+}
 
 const prisma = {
   placement: { findMany: vi.fn(), findUnique: vi.fn() },
@@ -30,6 +69,71 @@ describe('SyncService', () => {
     expect(result.changes.hourLogs).toHaveLength(1)
     expect(result.checkpoint).toBeTypeOf('string')
     expect(result.hasMore).toBe(false)
+  })
+
+  it('incluye el tie-breaker por id cuando el cursor comparte updatedAt con la fila', async () => {
+    // Cursor previo dejó (updatedAt = X, id = 10). Hay una fila más con
+    // updatedAt = X e id = 11: el cursor debe incluirlaporque su id es mayor.
+    const ts = '2026-04-01T12:00:00.000Z'
+    const since = encodeCheckpoint({ updatedAt: ts, id: 10 })
+
+    prisma.hourLog.findMany.mockImplementation(async (args: { where?: Record<string, unknown> }) => {
+      const fixture = [{
+        id: 11, placementId: 1, updatedAt: new Date(ts), date: new Date(ts),
+        startTime: '08:00', endTime: '12:00', hours: 4, activity: 'Soporte', version: 1,
+      }]
+      return Promise.resolve(fixture.filter((r) => matchesKeysetWhere(r, args.where)))
+    })
+
+    const result = await service.pull(5, since, 200)
+
+    expect(result.changes.hourLogs.map((r: { id: number }) => r.id)).toContain(11)
+  })
+
+  it('pagina 4.000 hourLogs sin perder ni duplicar (incluyendo mismos updatedAt)', async () => {
+    // Cada 7 filas comparten updatedAt, fuerza el tie-breaker por id en cada página.
+    const N = 4000
+    type Row = {
+      id: number; placementId: number; updatedAt: Date; date: Date
+      startTime: string; endTime: string; hours: number; activity: string; version: number
+    }
+    const fixture: Row[] = []
+    const base = Date.parse('2026-03-01T00:00:00.000Z')
+    for (let i = 0; i < N; i++) {
+      const updatedAt = new Date(base + Math.floor(i / 7) * 60_000)
+      fixture.push({
+        id: i + 1, placementId: 1, updatedAt, date: updatedAt,
+        startTime: '08:00', endTime: '12:00', hours: 4, activity: 'Soporte', version: 1,
+      })
+    }
+    fixture.sort((a, b) => {
+      const t = a.updatedAt.getTime() - b.updatedAt.getTime()
+      return t !== 0 ? t : a.id - b.id
+    })
+
+    prisma.placement.findMany.mockResolvedValue([])
+    prisma.document.findMany.mockResolvedValue([])
+    prisma.evaluation.findMany.mockResolvedValue([])
+    prisma.hourLog.findMany.mockImplementation(
+      async (args: { where?: Record<string, unknown>; take?: number }) => {
+        const filtered = fixture.filter((r) => matchesKeysetWhere(r, args.where))
+        return Promise.resolve(args.take != null ? filtered.slice(0, args.take) : filtered)
+      },
+    )
+
+    const seen = new Set<number>()
+    let since: string | undefined
+    let pages = 0
+    while (true) {
+      const result = await service.pull(5, since, 200)
+      for (const r of result.changes.hourLogs) seen.add(r.id)
+      if (!result.hasMore || !result.checkpoint) break
+      since = result.checkpoint
+      pages++
+      if (pages > 100) throw new Error('demasiadas páginas — el cursor no avanza')
+    }
+
+    expect(seen.size).toBe(N)
   })
 
   it('applies a create operation and returns applied', async () => {
