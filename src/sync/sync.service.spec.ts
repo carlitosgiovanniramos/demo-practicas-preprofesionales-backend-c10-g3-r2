@@ -2,9 +2,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SyncService } from './sync.service'
 import { encodeCheckpoint } from './checkpoint'
 
-// Helper: evalúa el where clause de Prisma para keyset (post-fix) o
-// updatedAt-only (pre-fix). Permite testear el comportamiento del filtro
-// sin una DB real.
 function matchesKeysetWhere(
   row: { id: number; updatedAt: Date },
   where: Record<string, unknown> | undefined,
@@ -12,25 +9,21 @@ function matchesKeysetWhere(
   if (!where) return true
   const orClauses = (where as { OR?: Array<Record<string, unknown>> }).OR
   if (!Array.isArray(orClauses)) {
-    // Forma simple (pre-fix): { updatedAt: { gt: ... } }
     const upGt = (where as { updatedAt?: { gt?: Date | string } }).updatedAt?.gt
     if (upGt != null) {
       return row.updatedAt.getTime() > new Date(upGt).getTime()
     }
     return true
   }
-  // Forma keyset (post-fix): OR de cláusulas
   return orClauses.some((clause) => {
     const up = clause.updatedAt
     const idGt = (clause.id as { gt?: number } | undefined)?.gt
     if (up instanceof Date) {
-      // Clausula 2: updatedAt == cursor.updatedAt, id > cursor.id
       if (idGt != null && row.updatedAt.getTime() === up.getTime() && row.id > idGt) {
         return true
       }
     }
     if (up && typeof up === 'object' && !(up instanceof Date) && !Array.isArray(up)) {
-      // Clausula 1: updatedAt > cursor.updatedAt
       const gt = (up as { gt?: Date | string }).gt
       if (gt != null && row.updatedAt.getTime() > new Date(gt).getTime()) {
         return true
@@ -72,8 +65,6 @@ describe('SyncService', () => {
   })
 
   it('incluye el tie-breaker por id cuando el cursor comparte updatedAt con la fila', async () => {
-    // Cursor previo dejó (updatedAt = X, id = 10). Hay una fila más con
-    // updatedAt = X e id = 11: el cursor debe incluirlaporque su id es mayor.
     const ts = '2026-04-01T12:00:00.000Z'
     const since = encodeCheckpoint({ updatedAt: ts, id: 10 })
 
@@ -91,7 +82,6 @@ describe('SyncService', () => {
   })
 
   it('pagina 4.000 hourLogs sin perder ni duplicar (incluyendo mismos updatedAt)', async () => {
-    // Cada 7 filas comparten updatedAt, fuerza el tie-breaker por id en cada página.
     const N = 4000
     type Row = {
       id: number; placementId: number; updatedAt: Date; date: Date

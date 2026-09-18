@@ -9,10 +9,6 @@ export class SyncService {
 
   async pull(userId: number, since: string | undefined, limit: number) {
     const cursor = decodeCheckpoint(since)
-    // Keyset pagination: si hay cursor, se avanza por (updatedAt, id) usando
-    // un OR compuesto. Evita que dos filas con la misma marca de tiempo
-    // (mismo milisegundo) se salteen la una a la otra — la segunda fila
-    // sigue entrando mientras su id sea estrictamente mayor.
     const where = cursor
       ? {
           OR: [
@@ -38,8 +34,6 @@ export class SyncService {
     const newest = [...placements, ...hourLogs, ...documents, ...evaluations]
       .sort((a, b) => {
         const t = new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-        // Empate por marca de tiempo: gana el id más alto para que el cursor
-        // cubra todas las filas con ese updatedAt en la próxima página.
         return t !== 0 ? t : b.id - a.id
       })[0]
 
@@ -59,8 +53,6 @@ export class SyncService {
     for (const op of ops) {
       let result: SyncOperationResult
       try {
-        // D-01: sync_operations se escribe pero NUNCA se consulta antes de
-        // aplicar. Un reintento con el mismo clientOpId aplica dos veces.
         result = await this.applyOperation(userId, op)
       } catch (err) {
         result = {
