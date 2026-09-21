@@ -1,5 +1,5 @@
 import 'dotenv/config'
-import { PrismaClient } from '@prisma/client'
+import { Prisma, PrismaClient } from '@prisma/client'
 import * as bcrypt from 'bcryptjs'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import type { SyncOperationInput } from './dto/push.dto'
@@ -17,8 +17,32 @@ import { SyncService } from './sync.service'
 // (ver docker-compose.yml / .github/workflows/ci.yml) y corren este test.
 const hasDatabase = Boolean(process.env.DATABASE_URL)
 
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+// Barrera de encuentro: retiene a cada llamador hasta que lleguen `parties`
+// y entonces los libera a todos a la vez. No depende de tiempos: el tope
+// `timeoutMs` solo convierte un bloqueo eterno en un fallo con mensaje claro.
+function createRendezvous(parties: number, timeoutMs = 3000) {
+  let arrived = 0
+  let open!: () => void
+  const opened = new Promise<void>((resolve) => {
+    open = resolve
+  })
+
+  return async function arrive() {
+    arrived += 1
+    if (arrived >= parties) {
+      open()
+      return
+    }
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const timedOut = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`Barrera: solo ${arrived} de ${parties} llamadas llegaron a $transaction`)), timeoutMs)
+    })
+    try {
+      await Promise.race([opened, timedOut])
+    } finally {
+      clearTimeout(timer)
+    }
+  }
 }
 
 describe.skipIf(!hasDatabase)('SyncService.push — idempotencia de clientOpId (D-01)', () => {
@@ -177,16 +201,18 @@ describe.skipIf(!hasDatabase)('SyncService.push — idempotencia de clientOpId (
   it('dos envíos concurrentes con el mismo clientOpId dejan una sola fila y revierten al perdedor', async () => {
     const op = createOp(crypto.randomUUID(), 'Soporte — envíos concurrentes')
 
-    // Barrera determinística: sin esto, Promise.all no garantiza que ambas
+    // Barrera de encuentro: sin ella, Promise.all no garantiza que ambas
     // llamadas lean "no existe" antes de que cualquiera comprometa su
     // transacción — la segunda podría leer después del commit de la primera
     // y tomar el camino secuencial, sin ejercitar nunca el P2002 ni el
-    // rollback. Retrasamos la entrada a $transaction (no el trabajo real
-    // adentro) lo suficiente para que ambas lecturas previas ya hayan
-    // ocurrido, forzando la colisión real en la base de datos.
+    // rollback. Solo se llega a $transaction si la lectura inicial de
+    // sync_operations devolvió "no existe"; retener a cada llamada ahí hasta
+    // que lleguen las dos garantiza que ambas observaron la ausencia y que
+    // ninguna pudo comprometer antes. Al liberarlas, compiten de verdad.
+    const arriveAtTransaction = createRendezvous(2)
     const realTransaction = prisma.$transaction.bind(prisma)
     const transactionSpy = vi.spyOn(prisma, '$transaction').mockImplementation(async (...args: Parameters<typeof realTransaction>) => {
-      await sleep(150)
+      await arriveAtTransaction()
       return realTransaction(...args)
     })
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- espía sobre un método privado, solo para el test.
@@ -194,13 +220,18 @@ describe.skipIf(!hasDatabase)('SyncService.push — idempotencia de clientOpId (
 
     const [a, b] = await Promise.all([service.push(studentId, [op]), service.push(studentId, [op])])
 
-    // Prueba que hubo una carrera real, no un atajo secuencial: ambas
-    // llamadas entraron a $transaction (es decir, ambas corrieron
-    // applyOperation)...
+    // Ambas llamadas pasaron la barrera y entraron a $transaction (es decir,
+    // ambas corrieron applyOperation)...
     expect(transactionSpy).toHaveBeenCalledTimes(2)
     // ...pero solo una tuvo que recuperarse de la violación de unicidad —
     // la otra transacción sí comprometió limpio.
     expect(recoverSpy).toHaveBeenCalledTimes(1)
+
+    // El error que dispara la recuperación es la colisión de clave única
+    // (P2002) sobre sync_operations, no cualquier otro fallo.
+    const recoveredFrom = recoverSpy.mock.calls[0][2] as unknown
+    expect(recoveredFrom).toBeInstanceOf(Prisma.PrismaClientKnownRequestError)
+    expect((recoveredFrom as Prisma.PrismaClientKnownRequestError).code).toBe('P2002')
 
     expect(a.results[0]).toMatchObject({ status: 'applied' })
     expect(asJson(a.results[0])).toEqual(asJson(b.results[0]))
