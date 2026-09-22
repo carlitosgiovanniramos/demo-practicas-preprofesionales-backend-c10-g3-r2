@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, Logger } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import { type Checkpoint, decodeCheckpoint, encodeCheckpoint } from './checkpoint'
@@ -8,8 +8,16 @@ import type { SyncOperationInput, SyncOperationResult } from './dto/push.dto'
 // o el cliente de una transacción cuando aplicamos + registramos de forma atómica.
 type OperationClient = Pick<PrismaService, 'placement' | 'hourLog'>
 
+// Solo cuenta como colisión de clientOpId la violación de la PK compuesta
+// (userId, clientOpId) de sync_operations — no cualquier P2002, para que un
+// futuro índice único en otra tabla no se confunda con esta carrera.
 function isDuplicateClientOpId(err: unknown): boolean {
-  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002'
+  if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== 'P2002') return false
+  const target = err.meta?.target
+  let fields: unknown[] = []
+  if (Array.isArray(target)) fields = target
+  else if (typeof target === 'string') fields = [target]
+  return fields.includes('userId') && fields.includes('clientOpId')
 }
 
 // La identidad de una operación es (userId, clientOpId): el UUID lo genera
@@ -21,6 +29,8 @@ function syncOpKey(userId: number, clientOpId: string) {
 
 @Injectable()
 export class SyncService {
+  private readonly logger = new Logger(SyncService.name)
+
   constructor(private readonly prisma: PrismaService) {}
 
   async pull(userId: number, since: string | undefined, limit: number) {
@@ -103,27 +113,25 @@ export class SyncService {
       if (persisted) return persisted.response as unknown as SyncOperationResult
     }
 
-    const rejected: SyncOperationResult = {
+    // Lo que llega aquí sin ser la colisión de arriba es un error
+    // *lanzado* por applyAndRecord: los rechazos de negocio (placement ajeno,
+    // entidad no sincronizable) ya se registraron dentro de la transacción en
+    // applyOperation y nunca lanzan. Lo que queda es infraestructura —
+    // timeout de la transacción interactiva, caída de conexión, pool
+    // agotado— y no sabemos si es transitorio. Por eso NO lo persistimos en
+    // sync_operations: si quedara cacheado, un reintento con el mismo
+    // clientOpId (justo lo que hace el cliente ante una señal intermitente)
+    // encontraría la fila y devolvería para siempre este rechazo, perdiendo
+    // la hora aunque el fallo ya no exista. Al no persistir, el próximo
+    // intento con el mismo clientOpId vuelve a correr applyAndRecord de cero.
+    this.logger.error(`Fallo al aplicar la operación de sync ${op.clientOpId} (userId=${userId})`, err instanceof Error ? err.stack : err)
+
+    return {
       clientOpId: op.clientOpId,
       status: 'rejected',
       server: null,
-      reason: err instanceof Error ? err.message : 'no se pudo aplicar la operación',
+      reason: 'no se pudo aplicar la operación, se reintentará',
     }
-    return this.recordRejection(userId, op, rejected)
-  }
-
-  private async recordRejection(userId: number, op: SyncOperationInput, rejected: SyncOperationResult): Promise<SyncOperationResult> {
-    try {
-      await this.prisma.syncOperation.create({
-        data: { clientOpId: op.clientOpId, userId, response: rejected as unknown as object },
-      })
-    } catch (createErr) {
-      if (isDuplicateClientOpId(createErr)) {
-        const persisted = await this.prisma.syncOperation.findUnique({ where: syncOpKey(userId, op.clientOpId) })
-        if (persisted) return persisted.response as unknown as SyncOperationResult
-      }
-    }
-    return rejected
   }
 
   private async applyOperation(client: OperationClient, userId: number, op: SyncOperationInput): Promise<SyncOperationResult> {

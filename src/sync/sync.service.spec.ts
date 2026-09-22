@@ -3,9 +3,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SyncService } from './sync.service'
 
 const uniqueViolation = () =>
-  new Prisma.PrismaClientKnownRequestError('Unique constraint failed on the fields: (`clientOpId`)', {
+  new Prisma.PrismaClientKnownRequestError('Unique constraint failed on the fields: (`userId`,`clientOpId`)', {
     code: 'P2002',
     clientVersion: 'test',
+    meta: { target: ['userId', 'clientOpId'] },
   })
 
 const prisma = {
@@ -134,6 +135,41 @@ describe('SyncService', () => {
 
     expect(first.results[0]).toEqual(winnerResponse)
     expect(second.results[0]).toEqual(winnerResponse)
+    expect(prisma.hourLog.create).toHaveBeenCalledTimes(1)
+  })
+
+  it('un fallo de infraestructura no se cachea como rechazo permanente: el reintento vuelve a aplicar', async () => {
+    prisma.placement.findUnique.mockResolvedValue({ id: 1, studentId: 5 })
+    prisma.hourLog.create.mockResolvedValue({ id: 77, version: 1 })
+
+    const op = {
+      clientOpId: 'infra-fail-op',
+      entity: 'hourLog' as const,
+      op: 'create' as const,
+      baseVersion: null,
+      payload: { placementId: 1, date: '2026-04-02', startTime: '08:00', endTime: '12:00', hours: 4, activity: 'Soporte' },
+    }
+
+    // Primer push: la transacción interactiva revienta por un fallo
+    // transitorio (timeout, conexión caída, pool agotado) — no es P2002.
+    prisma.$transaction
+      .mockImplementationOnce(async () => {
+        throw new Error('Transaction already closed: A query cannot be executed on a closed transaction.')
+      })
+      .mockImplementationOnce((fn: (tx: typeof prisma) => unknown) => fn(prisma))
+
+    const first = await service.push(5, [op])
+    expect(first.results[0]).toMatchObject({ status: 'rejected' })
+    // El rechazo por fallo de infraestructura no se persiste: si quedara
+    // cacheado, el reintento del cliente (misma señal intermitente) lo
+    // encontraría y jamás volvería a intentar aplicar la operación — la hora
+    // se perdería en vez de duplicarse.
+    expect(prisma.syncOperation.create).not.toHaveBeenCalled()
+
+    // Segundo push con el mismo clientOpId: como no hay nada persistido,
+    // vuelve a correr applyAndRecord de cero y esta vez aplica.
+    const second = await service.push(5, [op])
+    expect(second.results[0]).toMatchObject({ status: 'applied' })
     expect(prisma.hourLog.create).toHaveBeenCalledTimes(1)
   })
 })
