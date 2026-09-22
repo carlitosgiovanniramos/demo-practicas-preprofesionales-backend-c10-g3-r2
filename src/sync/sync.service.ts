@@ -3,6 +3,33 @@ import { PrismaService } from '../prisma/prisma.service'
 import { type Checkpoint, decodeCheckpoint, encodeCheckpoint } from './checkpoint'
 import type { SyncOperationInput, SyncOperationResult } from './dto/push.dto'
 
+// Los dos estados que solo el tutor puede poner. Mientras la hora no esté en
+// uno de ellos, nadie resolvió nada y la edición del estudiante es válida.
+const RESOLVED_BY_TUTOR: Record<string, string | undefined> = {
+  APPROVED: 'aprobó',
+  REJECTED: 'rechazó',
+}
+
+// baseVersion no decide si la edición se aplica — eso lo decide el estado.
+// Sirve para saber qué explicarle al estudiante: si editó sobre una versión
+// anterior a la que ya tiene el servidor, el tutor resolvió mientras él estaba
+// sin conexión, y conviene decírselo así en vez de culparlo.
+// El hourLog se lee con include: { placement: true } para comprobar de quién
+// es. El placement no es asunto del cliente — la respuesta de 'applied'
+// tampoco lo lleva — así que se saca antes de devolverlo.
+function withoutPlacement<T extends { placement: unknown }>(row: T): Omit<T, 'placement'> {
+  const copy: Partial<T> = { ...row }
+  delete copy.placement
+  return copy as Omit<T, 'placement'>
+}
+
+function rejectionReason(verbo: string, baseVersion: number | null, serverVersion: number): string {
+  const editabaUnaCopiaVieja = baseVersion !== null && baseVersion < serverVersion
+  return editabaUnaCopiaVieja
+    ? `el tutor ${verbo} este registro mientras estabas sin conexión, así que tu edición no se aplicó`
+    : `el tutor ya ${verbo} este registro y no admite más cambios`
+}
+
 @Injectable()
 export class SyncService {
   constructor(private readonly prisma: PrismaService) {}
@@ -103,6 +130,19 @@ export class SyncService {
     }
 
     if (op.op === 'update') {
+      // E1-04: el servidor es la autoridad sobre el estado. Una hora que el
+      // tutor ya resolvió no se vuelve a editar desde el cliente, por vieja
+      // que sea la copia que traía el teléfono.
+      const resolution = RESOLVED_BY_TUTOR[existing.status]
+      if (resolution) {
+        return {
+          clientOpId: op.clientOpId,
+          status: 'conflict',
+          server: withoutPlacement(existing) as never,
+          reason: rejectionReason(resolution, op.baseVersion, existing.version),
+        }
+      }
+
       // La actualización aplica los campos recibidos y avanza version.
       const updated = await this.prisma.hourLog.update({
         where: { id: Number(op.payload.id) },
