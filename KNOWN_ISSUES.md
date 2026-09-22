@@ -14,9 +14,10 @@ idénticos. Pasa más en la práctica de campo, con señal intermitente. Mandamo
 en cada operación y guardamos las operaciones en `sync_operations`, pero evidentemente algo
 no está cerrando el círculo. No tuvimos tiempo de sentarnos a entenderlo.
 
-`SyncService.push` ahora consulta `sync_operations` por `clientOpId` antes de aplicar, y
-aplica + registra dentro de una misma transacción para que un choque concurrente en la PK
-(`clientOpId`) revierta también la escritura de negocio, no solo el registro de auditoría.
+`SyncService.push` ahora consulta `sync_operations` por `(userId, clientOpId)` antes de
+aplicar, y aplica + registra dentro de una misma transacción para que un choque concurrente en
+la PK compuesta (`userId`, `clientOpId`) revierta también la escritura de negocio, no solo el
+registro de auditoría.
 Tests: `src/sync/sync.service.spec.ts` (mocks) y `src/sync/sync.push.integration.spec.ts`
 (Postgres real, secuencial + concurrente).
 
