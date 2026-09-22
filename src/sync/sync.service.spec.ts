@@ -142,5 +142,27 @@ describe('SyncService', () => {
 
       expect(result.results[0]).toMatchObject({ status: 'applied' })
     })
+
+    // Borrar es tan destructivo como editar: si el tutor ya resolvió, el
+    // delete offline tampoco puede entrar. La guarda vive antes de separar
+    // update de delete justamente para que las dos ramas queden cubiertas.
+    it.each(['APPROVED', 'REJECTED'])('rechaza también el borrado cuando la hora está en %s', async (status) => {
+      prisma.hourLog.findUnique.mockResolvedValue(serverRow(status))
+
+      const result = await service.push(5, [{ ...editOf(42, 2), op: 'delete' as const }])
+
+      expect(result.results[0]).toMatchObject({ status: 'conflict' })
+      expect(prisma.hourLog.update).not.toHaveBeenCalled()
+    })
+
+    it('permite borrar mientras nadie haya resuelto la hora', async () => {
+      prisma.hourLog.findUnique.mockResolvedValue(serverRow('SUBMITTED'))
+      prisma.hourLog.update.mockResolvedValue({ id: 42, version: 4 })
+
+      const result = await service.push(5, [{ ...editOf(42, 2), op: 'delete' as const }])
+
+      expect(result.results[0]).toMatchObject({ status: 'applied' })
+      expect(prisma.hourLog.update).toHaveBeenCalledTimes(1)
+    })
   })
 })

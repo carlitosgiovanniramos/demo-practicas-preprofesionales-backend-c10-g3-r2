@@ -129,20 +129,24 @@ export class SyncService {
       return { clientOpId: op.clientOpId, status: 'rejected', server: null, reason: 'el registro no pertenece al usuario' }
     }
 
-    if (op.op === 'update') {
-      // E1-04: el servidor es la autoridad sobre el estado. Una hora que el
-      // tutor ya resolvió no se vuelve a editar desde el cliente, por vieja
-      // que sea la copia que traía el teléfono.
-      const resolution = RESOLVED_BY_TUTOR[existing.status]
-      if (resolution) {
-        return {
-          clientOpId: op.clientOpId,
-          status: 'conflict',
-          server: withoutPlacement(existing) as never,
-          reason: rejectionReason(resolution, op.baseVersion, existing.version),
-        }
+    // E1-04: el servidor es la autoridad sobre el estado. Una hora que el
+    // tutor ya resolvió no se vuelve a tocar desde el cliente, por vieja que
+    // sea la copia que traía el teléfono.
+    //
+    // La guarda va antes de separar update de delete a propósito: borrar una
+    // hora aprobada destruye la decisión del tutor igual que editarla, y
+    // dejar el delete por fuera sería cerrar la puerta y olvidar la ventana.
+    const resolution = RESOLVED_BY_TUTOR[existing.status]
+    if (resolution) {
+      return {
+        clientOpId: op.clientOpId,
+        status: 'conflict',
+        server: withoutPlacement(existing) as never,
+        reason: rejectionReason(resolution, op.baseVersion, existing.version),
       }
+    }
 
+    if (op.op === 'update') {
       // La actualización aplica los campos recibidos y avanza version.
       const updated = await this.prisma.hourLog.update({
         where: { id: Number(op.payload.id) },
