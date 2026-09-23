@@ -285,89 +285,7 @@ describe('SyncService', () => {
       }
     })
   })
-})
 
-describe('keysetAndScope', () => {
-  const userId = 5
-  const cursor = { updatedAt: '2026-04-01T12:00:00.000Z', id: 10 }
-  const expectedScope = { OR: [{ studentId: userId }, { tutorId: userId }] }
-
-  it('composes keyset and scope in a single AND clause for placement', () => {
-    expect(keysetAndScope('placement', cursor, userId)).toEqual({
-      AND: [
-        {
-          OR: [
-            { updatedAt: { gt: new Date('2026-04-01T12:00:00.000Z') } },
-            { updatedAt: new Date('2026-04-01T12:00:00.000Z'), id: { gt: 10 } },
-          ],
-        },
-        expectedScope,
-      ],
-    })
-  })
-
-  it('nests the scope under placement for hourLog/document/evaluation streams', () => {
-    expect(keysetAndScope('hourLog', cursor, userId)).toEqual({
-      AND: [
-        {
-          OR: [
-            { updatedAt: { gt: new Date('2026-04-01T12:00:00.000Z') } },
-            { updatedAt: new Date('2026-04-01T12:00:00.000Z'), id: { gt: 10 } },
-          ],
-        },
-        { placement: expectedScope },
-      ],
-    })
-    expect(keysetAndScope('document', cursor, userId)).toEqual({
-      AND: [
-        {
-          OR: [
-            { updatedAt: { gt: new Date('2026-04-01T12:00:00.000Z') } },
-            { updatedAt: new Date('2026-04-01T12:00:00.000Z'), id: { gt: 10 } },
-          ],
-        },
-        { placement: expectedScope },
-      ],
-    })
-    expect(keysetAndScope('evaluation', cursor, userId)).toEqual({
-      AND: [
-        {
-          OR: [
-            { updatedAt: { gt: new Date('2026-04-01T12:00:00.000Z') } },
-            { updatedAt: new Date('2026-04-01T12:00:00.000Z'), id: { gt: 10 } },
-          ],
-        },
-        { placement: expectedScope },
-      ],
-    })
-  })
-
-  it('emits an empty keyset clause when there is no cursor (first page)', () => {
-    expect(keysetAndScope('placement', null, userId)).toEqual({
-      AND: [{}, expectedScope],
-    })
-  })
-})
-
-describe('pickEntityCheckpoints', () => {
-  it('returns null when there are no rows and no previous sub-cursor', () => {
-    expect(pickEntityCheckpoints([], null)).toBeNull()
-  })
-
-  it('preserves the previous sub-cursor when the entity returned zero rows (slow-stream guard)', () => {
-    const prev = { updatedAt: '2026-04-01T12:00:00.000Z', id: 7 }
-    expect(pickEntityCheckpoints([], prev)).toBe(prev)
-  })
-
-  it('advances to the last row when the entity returned rows', () => {
-    const rows = [
-      { updatedAt: new Date('2026-04-01T10:00:00.000Z'), id: 5 },
-      { updatedAt: new Date('2026-04-01T11:00:00.000Z'), id: 9 },
-      { updatedAt: new Date('2026-04-01T12:00:00.000Z'), id: 12 },
-    ]
-    expect(pickEntityCheckpoints(rows, null)).toEqual({
-      updatedAt: '2026-04-01T12:00:00.000Z',
-      id: 12,
   // E1-04 · El servidor es la autoridad sobre el estado.
   //
   // El README ("Resolución de conflictos") ya lo promete: si un HourLog pasó a
@@ -481,6 +399,91 @@ describe('pickEntityCheckpoints', () => {
 
       expect(result.results[0]).toMatchObject({ status: 'applied' })
       expect(prisma.hourLog.update).toHaveBeenCalledTimes(1)
+    })
+  })
+})
+
+describe('keysetAndScope', () => {
+  const userId = 5
+  const cursor = { updatedAt: '2026-04-01T12:00:00.000Z', id: 10 }
+  const expectedScope = { OR: [{ studentId: userId }, { tutorId: userId }] }
+
+  it('composes keyset and scope in a single AND clause for placement', () => {
+    expect(keysetAndScope('placement', cursor, userId)).toEqual({
+      AND: [
+        {
+          OR: [
+            { updatedAt: { gt: new Date('2026-04-01T12:00:00.000Z') } },
+            { updatedAt: new Date('2026-04-01T12:00:00.000Z'), id: { gt: 10 } },
+          ],
+        },
+        expectedScope,
+      ],
+    })
+  })
+
+  it('nests the scope under placement for hourLog/document/evaluation streams', () => {
+    expect(keysetAndScope('hourLog', cursor, userId)).toEqual({
+      AND: [
+        {
+          OR: [
+            { updatedAt: { gt: new Date('2026-04-01T12:00:00.000Z') } },
+            { updatedAt: new Date('2026-04-01T12:00:00.000Z'), id: { gt: 10 } },
+          ],
+        },
+        { placement: expectedScope },
+      ],
+    })
+    expect(keysetAndScope('document', cursor, userId)).toEqual({
+      AND: [
+        {
+          OR: [
+            { updatedAt: { gt: new Date('2026-04-01T12:00:00.000Z') } },
+            { updatedAt: new Date('2026-04-01T12:00:00.000Z'), id: { gt: 10 } },
+          ],
+        },
+        { placement: expectedScope },
+      ],
+    })
+    expect(keysetAndScope('evaluation', cursor, userId)).toEqual({
+      AND: [
+        {
+          OR: [
+            { updatedAt: { gt: new Date('2026-04-01T12:00:00.000Z') } },
+            { updatedAt: new Date('2026-04-01T12:00:00.000Z'), id: { gt: 10 } },
+          ],
+        },
+        { placement: expectedScope },
+      ],
+    })
+  })
+
+  it('emits an empty keyset clause when there is no cursor (first page)', () => {
+    expect(keysetAndScope('placement', null, userId)).toEqual({
+      AND: [{}, expectedScope],
+    })
+  })
+})
+
+describe('pickEntityCheckpoints', () => {
+  it('returns null when there are no rows and no previous sub-cursor', () => {
+    expect(pickEntityCheckpoints([], null)).toBeNull()
+  })
+
+  it('preserves the previous sub-cursor when the entity returned zero rows (slow-stream guard)', () => {
+    const prev = { updatedAt: '2026-04-01T12:00:00.000Z', id: 7 }
+    expect(pickEntityCheckpoints([], prev)).toBe(prev)
+  })
+
+  it('advances to the last row when the entity returned rows', () => {
+    const rows = [
+      { updatedAt: new Date('2026-04-01T10:00:00.000Z'), id: 5 },
+      { updatedAt: new Date('2026-04-01T11:00:00.000Z'), id: 9 },
+      { updatedAt: new Date('2026-04-01T12:00:00.000Z'), id: 12 },
+    ]
+    expect(pickEntityCheckpoints(rows, null)).toEqual({
+      updatedAt: '2026-04-01T12:00:00.000Z',
+      id: 12,
     })
   })
 })

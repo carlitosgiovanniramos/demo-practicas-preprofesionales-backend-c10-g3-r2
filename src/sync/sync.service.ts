@@ -49,6 +49,7 @@ export function pickEntityCheckpoints(
   if (rows.length === 0) return prev
   const last = rows[rows.length - 1]
   return { updatedAt: new Date(last.updatedAt).toISOString(), id: last.id }
+  }
 // Los dos estados que solo el tutor puede poner. Mientras la hora no esté en
 // uno de ellos, nadie resolvió nada y la edición del estudiante es válida.
 const RESOLVED_BY_TUTOR: Record<string, string | undefined> = {
