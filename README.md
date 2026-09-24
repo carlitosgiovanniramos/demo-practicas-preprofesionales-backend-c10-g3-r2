@@ -114,13 +114,32 @@ El cliente mantiene una copia local en IndexedDB y reconcilia contra dos endpoin
     "documents": [],
     "evaluations": []
   },
-  "checkpoint": "eyJ1cGRhdGVkQXQiOiIyMDI2LTA0LTAxVDEyOjAwOjAwLjAwMFoiLCJpZCI6OTl9",
+  "checkpoint": "eyJ2IjoyLCJwbGFjZW1lbnQiOnsidXBkYXRlZEF0IjoiMjAyNi0wNC0wMVQxMjowMDowMC4wMDBaIiwiaWQiOjk5fSwiaG91ckxvZyI6bnVsbCwiZG9jdW1lbnQiOm51bGwsImV2YWx1YXRpb24iOm51bGx9",
   "hasMore": false
 }
 ```
 
-`checkpoint` es opaco (base64 de `{ updatedAt, id }`); el cliente solo lo reenvía tal cual
-en el siguiente `since`.
+`checkpoint` es opaco (base64 del payload versionado `v: 2`); el cliente solo lo
+reenvía tal cual en el siguiente `since`. La forma interna actual tiene cuatro
+sub-cursores, uno por entidad sincronizable, así una entidad rápida no
+saltea a una lenta:
+
+```json
+{
+  "v": 2,
+  "placement":  { "updatedAt": "2026-04-01T12:00:00.000Z", "id": 99 },
+  "hourLog":    { "updatedAt": "2026-04-02T08:00:00.000Z", "id": 14 },
+  "document":   null,
+  "evaluation": null
+}
+```
+
+**Versionado y migración desde `v1`:** los cursores `v: 1` (un solo par
+`{ updatedAt, id }`) siguen siendo aceptados; `decodeCheckpoint` los levanta
+(promueve) a `v: 2` replicando el par en los cuatro slots, así un cliente
+con un cursor viejo no necesita re-entrenar tras el deploy. Cursor basura,
+no-base64 o no-JSON devuelve `null` y el servidor trata la siguiente página
+como la primera.
 
 **Body de `push`:**
 
