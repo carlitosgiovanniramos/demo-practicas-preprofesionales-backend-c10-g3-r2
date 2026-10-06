@@ -1,5 +1,5 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
-import { ApplicationStatus, OfferStatus } from '@prisma/client'
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
+import { ApplicationStatus, type Offer, OfferStatus, Role } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import type { CreateOfferDto } from './dto/create-offer.dto'
 
@@ -37,6 +37,33 @@ export class OfferService {
       orderBy: { createdAt: 'desc' },
       include: { company: true, applications: { select: { status: true } } },
     })
+  }
+
+  // Empresa a cuyo nombre actúa el usuario: la suya si es COMPANY; null para
+  // cualquier otro rol o para una COMPANY sin empresa asociada.
+  private async actingCompanyId(userId: number, role: Role): Promise<number | null> {
+    if (role !== Role.COMPANY) return null
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { companyId: true } })
+    return user?.companyId ?? null
+  }
+
+  /**
+   * Verifica que quien administra una oferta pueda hacerlo: la coordinación
+   * siempre; una empresa solo si la oferta pertenece a su `companyId`. El
+   * guard filtra por rol; la pertenencia se comprueba acá, así que llamar al
+   * servicio directo con una empresa ajena también falla.
+   *
+   * Devuelve la oferta para que quien llama no tenga que volver a leerla.
+   */
+  async assertOfferOwnership(offerId: number, userId: number, role: Role): Promise<Offer> {
+    const offer = await this.prisma.offer.findUnique({ where: { id: offerId } })
+    if (!offer) throw new NotFoundException('oferta no encontrada')
+    if (role === Role.COORDINATOR) return offer
+    const companyId = await this.actingCompanyId(userId, role)
+    if (companyId === null || companyId !== offer.companyId) {
+      throw new ForbiddenException('la oferta no pertenece a tu empresa')
+    }
+    return offer
   }
 
   async publish(id: number) {
