@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException } from '@nestjs/common'
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApplicationService } from './application.service'
 
@@ -95,6 +95,19 @@ describe('ApplicationService', () => {
 
     it('forbids a company from listing applications of another company offer', async () => {
       await expect(service.listByOffer(1, OTHER_COMPANY, 'COMPANY' as never)).rejects.toThrow(ForbiddenException)
+      expect(prisma.application.findMany).not.toHaveBeenCalled()
+    })
+
+    it('forbids a user that is neither company nor coordinator, even without the roles guard', async () => {
+      await expect(service.listByOffer(1, 10, 'STUDENT' as never)).rejects.toThrow(ForbiddenException)
+      expect(prisma.user.findUnique).not.toHaveBeenCalled()
+      expect(prisma.application.findMany).not.toHaveBeenCalled()
+    })
+
+    it('fails with not found when the offer does not exist', async () => {
+      prisma.offer.findUnique.mockResolvedValueOnce(null)
+
+      await expect(service.listByOffer(999, OWNER, 'COMPANY' as never)).rejects.toThrow(NotFoundException)
       expect(prisma.application.findMany).not.toHaveBeenCalled()
     })
 
