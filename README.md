@@ -17,6 +17,8 @@ Requisitos: Node 24+, pnpm 10+, Docker.
 ```bash
 pnpm install
 cp .env.example .env
+# Genera un JWT_SECRET y pégalo en .env (ver "Variables de entorno")
+node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
 docker compose up -d
 pnpm db:deploy
 pnpm db:seed
@@ -34,6 +36,24 @@ máquina, cambia `POSTGRES_PORT` y `DATABASE_URL` en `.env` antes de `docker com
 | `JWT_SECRET` | (requerido) | Secreto para firmar JWTs |
 | `PORT` | `3000` | Puerto donde escucha la API |
 | `CORS_ORIGIN` | `http://localhost:5173` | Origen permitido para requests desde el navegador (frontend Vite) |
+
+### `JWT_SECRET`
+
+No tiene valor por defecto: si falta o está vacía, la API **no arranca** y el error dice
+`Falta la variable de entorno JWT_SECRET`. Quien conozca el secreto puede firmarse tokens
+con cualquier rol, así que:
+
+- Usa un valor aleatorio de al menos 32 bytes, generado con un CSPRNG:
+
+  ```bash
+  node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
+  # o, si tienes OpenSSL:
+  openssl rand -base64 48
+  ```
+
+- Genera uno distinto por entorno (local, CI, staging, producción). En producción guárdalo
+  en el gestor de secretos de la plataforma, nunca en el repo.
+- Cambiarlo invalida todos los tokens emitidos: los usuarios tendrán que volver a loguearse.
 
 Usuarios del seed (contraseña `yura1234` para todos):
 
