@@ -7,8 +7,27 @@ import type { CreateOfferDto } from './dto/create-offer.dto'
 export class OfferService {
   constructor(private readonly prisma: PrismaService) {}
 
-  create(dto: CreateOfferDto) {
-    return this.prisma.offer.create({ data: { ...dto, status: OfferStatus.DRAFT } })
+  async create(dto: CreateOfferDto, userId: number, role: Role) {
+    const companyId = await this.resolveOwnerCompany(dto.companyId, userId, role)
+    return this.prisma.offer.create({ data: { ...dto, companyId, status: OfferStatus.DRAFT } })
+  }
+
+  /**
+   * Empresa a cuyo nombre se crea una oferta. La coordinación la elige en el
+   * DTO; una empresa siempre crea a nombre propio. No se confía en la
+   * `companyId` del cliente: si una empresa la manda, tiene que ser la suya.
+   */
+  private async resolveOwnerCompany(requested: number | undefined, userId: number, role: Role): Promise<number> {
+    if (role === Role.COORDINATOR) {
+      if (requested === undefined) throw new BadRequestException('companyId es obligatorio para la coordinación')
+      return requested
+    }
+    const own = await this.actingCompanyId(userId, role)
+    if (own === null) throw new ForbiddenException('el usuario no tiene una empresa asociada')
+    if (requested !== undefined && requested !== own) {
+      throw new ForbiddenException('no puedes crear ofertas para otra empresa')
+    }
+    return own
   }
 
   findAll() {

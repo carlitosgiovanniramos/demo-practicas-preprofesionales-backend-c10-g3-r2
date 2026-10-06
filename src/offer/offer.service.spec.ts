@@ -62,6 +62,57 @@ describe('OfferService', () => {
     await expect(service.findAllForCompanyUser(42)).rejects.toThrow('el usuario no tiene una empresa asociada')
   })
 
+  describe('create', () => {
+    const dto = { title: 'Backend', description: 'API', modality: 'remoto', seats: 2, requiredHours: 240 }
+
+    beforeEach(() => {
+      prisma.offer.create.mockImplementation(({ data }) => Promise.resolve({ id: 1, ...data }))
+    })
+
+    it('creates the offer as DRAFT for the company of a company user, even without companyId', async () => {
+      prisma.user.findUnique.mockResolvedValue({ companyId: 100 })
+
+      const result = await service.create(dto as never, 20, 'COMPANY' as never)
+
+      expect(result).toMatchObject({ companyId: 100, status: 'DRAFT' })
+    })
+
+    it('accepts a company user that sends its own companyId', async () => {
+      prisma.user.findUnique.mockResolvedValue({ companyId: 100 })
+
+      await expect(service.create({ ...dto, companyId: 100 } as never, 20, 'COMPANY' as never)).resolves.toMatchObject({
+        companyId: 100,
+      })
+    })
+
+    it('forbids a company user from creating an offer for another company', async () => {
+      prisma.user.findUnique.mockResolvedValue({ companyId: 100 })
+
+      await expect(service.create({ ...dto, companyId: 200 } as never, 20, 'COMPANY' as never)).rejects.toThrow(
+        ForbiddenException,
+      )
+      expect(prisma.offer.create).not.toHaveBeenCalled()
+    })
+
+    it('forbids a company user with no company associated', async () => {
+      prisma.user.findUnique.mockResolvedValue({ companyId: null })
+
+      await expect(service.create(dto as never, 22, 'COMPANY' as never)).rejects.toThrow(ForbiddenException)
+      expect(prisma.offer.create).not.toHaveBeenCalled()
+    })
+
+    it('lets the coordinator create an offer for any company', async () => {
+      await expect(service.create({ ...dto, companyId: 200 } as never, 1, 'COORDINATOR' as never)).resolves.toMatchObject(
+        { companyId: 200, status: 'DRAFT' },
+      )
+      expect(prisma.user.findUnique).not.toHaveBeenCalled()
+    })
+
+    it('requires companyId when the coordinator creates an offer', async () => {
+      await expect(service.create(dto as never, 1, 'COORDINATOR' as never)).rejects.toThrow(BadRequestException)
+    })
+  })
+
   // La oferta 1 es de la empresa 100.
   describe('assertOfferOwnership', () => {
     const offer = { id: 1, companyId: 100, status: 'DRAFT' }

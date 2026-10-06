@@ -31,8 +31,8 @@ export class OfferController {
 
   @Post()
   @Roles(Role.COMPANY, Role.COORDINATOR)
-  create(@Body() dto: CreateOfferDto) {
-    return this.service.create(dto)
+  create(@Body() dto: CreateOfferDto, @Req() req: { user: { sub: number; role: Role } }) {
+    return this.service.create(dto, req.user.sub, req.user.role)
   }
 
   @Patch(':id/publish')
