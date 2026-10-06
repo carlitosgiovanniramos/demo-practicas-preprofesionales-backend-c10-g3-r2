@@ -37,13 +37,13 @@ export class OfferController {
 
   @Patch(':id/publish')
   @Roles(Role.COMPANY, Role.COORDINATOR)
-  publish(@Param('id', ParseIntPipe) id: number) {
-    return this.service.publish(id)
+  publish(@Param('id', ParseIntPipe) id: number, @Req() req: { user: { sub: number; role: Role } }) {
+    return this.service.publish(id, req.user.sub, req.user.role)
   }
 
   @Patch(':id/close')
   @Roles(Role.COMPANY, Role.COORDINATOR)
-  close(@Param('id', ParseIntPipe) id: number) {
-    return this.service.close(id)
+  close(@Param('id', ParseIntPipe) id: number, @Req() req: { user: { sub: number; role: Role } }) {
+    return this.service.close(id, req.user.sub, req.user.role)
   }
 }

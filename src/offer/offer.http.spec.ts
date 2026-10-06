@@ -86,4 +86,25 @@ describe('OfferController (HTTP) — pertenencia de la oferta', () => {
       expect(await res.json()).toMatchObject({ companyId: 200, status: 'DRAFT' })
     })
   })
+
+  // La oferta 1 es de la empresa 100; su estado inicial depende de la operación.
+  describe.each([
+    ['publish', 'DRAFT'],
+    ['close', 'PUBLISHED'],
+  ])('PATCH /offers/:id/%s', (action, initialStatus) => {
+    beforeEach(() => {
+      prisma.offer.findUnique.mockResolvedValue({ id: 1, companyId: 100, status: initialStatus })
+      prisma.offer.update.mockImplementation(({ data }) => Promise.resolve({ id: 1, companyId: 100, ...data }))
+    })
+
+    it.each([
+      ['empresa ajena', 403, otherCompany],
+      ['empresa dueña', 200, owner],
+      ['coordinación', 200, coordinator],
+    ])('como %s → %i', async (_label, expected, user) => {
+      const res = await call('PATCH', `/offers/1/${action}`, user)
+      expect(res.status).toBe(expected)
+      expect(prisma.offer.update).toHaveBeenCalledTimes(expected === 200 ? 1 : 0)
+    })
+  })
 })

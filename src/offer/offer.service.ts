@@ -85,9 +85,8 @@ export class OfferService {
     return offer
   }
 
-  async publish(id: number) {
-    const offer = await this.prisma.offer.findUnique({ where: { id } })
-    if (!offer) throw new NotFoundException('oferta no encontrada')
+  async publish(id: number, userId: number, role: Role) {
+    const offer = await this.assertOfferOwnership(id, userId, role)
     if (offer.status !== OfferStatus.DRAFT) {
       throw new BadRequestException('solo se publican ofertas en DRAFT')
     }
@@ -97,9 +96,8 @@ export class OfferService {
     })
   }
 
-  async close(id: number) {
-    const offer = await this.prisma.offer.findUnique({ where: { id } })
-    if (!offer) throw new NotFoundException('oferta no encontrada')
+  async close(id: number, userId: number, role: Role) {
+    const offer = await this.assertOfferOwnership(id, userId, role)
     if (offer.status !== OfferStatus.PUBLISHED) {
       throw new BadRequestException('solo se cierran ofertas publicadas')
     }

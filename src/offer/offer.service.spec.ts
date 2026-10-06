@@ -16,20 +16,67 @@ describe('OfferService', () => {
     service = new OfferService(prisma as never)
   })
 
-  it('publishes a DRAFT offer and stamps publishedAt', async () => {
-    prisma.offer.findUnique.mockResolvedValue({ id: 1, status: 'DRAFT' })
-    prisma.offer.update.mockImplementation(({ data }) => Promise.resolve({ id: 1, ...data }))
+  // La oferta 1 es de la empresa 100; el usuario 20 es de ella y el 21 de la 200.
+  describe('publish and close', () => {
+    beforeEach(() => {
+      prisma.offer.update.mockImplementation(({ data }) => Promise.resolve({ id: 1, ...data }))
+      prisma.user.findUnique.mockImplementation(({ where }) =>
+        Promise.resolve({ companyId: where.id === 20 ? 100 : 200 }),
+      )
+    })
 
-    const result = await service.publish(1)
+    it('publishes a DRAFT offer of its own company and stamps publishedAt', async () => {
+      prisma.offer.findUnique.mockResolvedValue({ id: 1, companyId: 100, status: 'DRAFT' })
 
-    expect(result.status).toBe('PUBLISHED')
-    expect(result.publishedAt).toBeInstanceOf(Date)
-  })
+      const result = await service.publish(1, 20, 'COMPANY' as never)
 
-  it('rejects publishing an offer that is not DRAFT', async () => {
-    prisma.offer.findUnique.mockResolvedValue({ id: 1, status: 'CLOSED' })
+      expect(result.status).toBe('PUBLISHED')
+      expect(result.publishedAt).toBeInstanceOf(Date)
+    })
 
-    await expect(service.publish(1)).rejects.toThrow(BadRequestException)
+    it('rejects publishing an offer that is not DRAFT', async () => {
+      prisma.offer.findUnique.mockResolvedValue({ id: 1, companyId: 100, status: 'CLOSED' })
+
+      await expect(service.publish(1, 20, 'COMPANY' as never)).rejects.toThrow(BadRequestException)
+    })
+
+    it('forbids a company from publishing another company offer', async () => {
+      prisma.offer.findUnique.mockResolvedValue({ id: 1, companyId: 100, status: 'DRAFT' })
+
+      await expect(service.publish(1, 21, 'COMPANY' as never)).rejects.toThrow(ForbiddenException)
+      expect(prisma.offer.update).not.toHaveBeenCalled()
+    })
+
+    it('lets the coordinator publish any offer', async () => {
+      prisma.offer.findUnique.mockResolvedValue({ id: 1, companyId: 100, status: 'DRAFT' })
+
+      await expect(service.publish(1, 1, 'COORDINATOR' as never)).resolves.toMatchObject({ status: 'PUBLISHED' })
+    })
+
+    it('closes a PUBLISHED offer of its own company', async () => {
+      prisma.offer.findUnique.mockResolvedValue({ id: 1, companyId: 100, status: 'PUBLISHED' })
+
+      await expect(service.close(1, 20, 'COMPANY' as never)).resolves.toMatchObject({ status: 'CLOSED' })
+    })
+
+    it('rejects closing an offer that is not PUBLISHED', async () => {
+      prisma.offer.findUnique.mockResolvedValue({ id: 1, companyId: 100, status: 'DRAFT' })
+
+      await expect(service.close(1, 20, 'COMPANY' as never)).rejects.toThrow(BadRequestException)
+    })
+
+    it('forbids a company from closing another company offer', async () => {
+      prisma.offer.findUnique.mockResolvedValue({ id: 1, companyId: 100, status: 'PUBLISHED' })
+
+      await expect(service.close(1, 21, 'COMPANY' as never)).rejects.toThrow(ForbiddenException)
+      expect(prisma.offer.update).not.toHaveBeenCalled()
+    })
+
+    it('lets the coordinator close any offer', async () => {
+      prisma.offer.findUnique.mockResolvedValue({ id: 1, companyId: 100, status: 'PUBLISHED' })
+
+      await expect(service.close(1, 1, 'COORDINATOR' as never)).resolves.toMatchObject({ status: 'CLOSED' })
+    })
   })
 
   it('counts accepted applications for an offer', async () => {
