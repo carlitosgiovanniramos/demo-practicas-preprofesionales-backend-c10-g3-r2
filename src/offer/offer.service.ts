@@ -1,11 +1,8 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
 import { ApplicationStatus, type Offer, OfferStatus, Role } from '@prisma/client'
+import { PUBLIC_COMPANY } from '../company/public-company'
 import { PrismaService } from '../prisma/prisma.service'
 import type { CreateOfferDto } from './dto/create-offer.dto'
-
-// Lo único de la empresa que viaja junto a una oferta para cualquier rol:
-// RUC y correo de contacto no salen del directorio de empresas (H-04).
-const PUBLIC_COMPANY = { select: { id: true, name: true } } as const
 
 @Injectable()
 export class OfferService {

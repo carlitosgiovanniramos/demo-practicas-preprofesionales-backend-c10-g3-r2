@@ -87,4 +87,14 @@ describe('ApplicationController (HTTP) — pertenencia de la oferta', () => {
     expect(res.status).toBe(expected)
     expect(prisma.application.update).toHaveBeenCalledTimes(expected === 200 ? 1 : 0)
   })
+
+  it('GET /applications/me no pide RUC ni correo de contacto de la empresa', async () => {
+    const res = await call('GET', '/applications/me', { sub: 10, role: 'STUDENT' })
+    expect(res.status).toBe(200)
+    expect(prisma.application.findMany).toHaveBeenCalledWith({
+      where: { studentId: 10 },
+      orderBy: { submittedAt: 'desc' },
+      include: { offer: { include: { company: { select: { id: true, name: true } } } } },
+    })
+  })
 })
