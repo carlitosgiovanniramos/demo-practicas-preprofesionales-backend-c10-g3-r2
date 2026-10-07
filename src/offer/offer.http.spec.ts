@@ -12,7 +12,8 @@ import { OfferService } from './offer.service'
 // Reproduce por HTTP los `curl` de E3-XX: guards reales, Prisma mockeado.
 // El usuario 20 es de la empresa 100 y el 21 de la empresa 200.
 const prisma = {
-  offer: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
+  offer: { findUnique: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn() },
+  application: { count: vi.fn() },
   user: { findUnique: vi.fn() },
 }
 const companyOf: Record<number, number> = { 20: 100, 21: 200 }
@@ -20,6 +21,8 @@ const companyOf: Record<number, number> = { 20: 100, 21: 200 }
 const owner = { sub: 20, role: 'COMPANY' }
 const otherCompany = { sub: 21, role: 'COMPANY' }
 const coordinator = { sub: 1, role: 'COORDINATOR' }
+const student = { sub: 30, role: 'STUDENT' }
+const tutor = { sub: 40, role: 'TUTOR' }
 
 describe('OfferController (HTTP) — pertenencia de la oferta', () => {
   let app: INestApplication
@@ -105,6 +108,63 @@ describe('OfferController (HTTP) — pertenencia de la oferta', () => {
       const res = await call('PATCH', `/offers/1/${action}`, user)
       expect(res.status).toBe(expected)
       expect(prisma.offer.update).toHaveBeenCalledTimes(expected === 200 ? 1 : 0)
+    })
+  })
+
+  describe('flujos de lectura que siguen abiertos', () => {
+    beforeEach(() => {
+      prisma.offer.findMany.mockResolvedValue([])
+    })
+
+    it('GET /offers: el catálogo publicado sigue disponible para el estudiante', async () => {
+      const res = await call('GET', '/offers', student)
+      expect(res.status).toBe(200)
+    })
+
+    it('GET /offers/me: la empresa sigue viendo sus propias ofertas', async () => {
+      const res = await call('GET', '/offers/me', owner)
+      expect(res.status).toBe(200)
+      expect(prisma.offer.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { companyId: 100 } }))
+    })
+  })
+
+  // H-04. La oferta 1 es de la empresa 100; el estudiante 30 no se postuló
+  // salvo que el test lo diga.
+  describe('GET /offers/:id', () => {
+    const offerIn = (status: string) => ({ id: 1, companyId: 100, status, company: { id: 100, name: 'Empresa 100' } })
+
+    beforeEach(() => {
+      prisma.application.count.mockResolvedValue(0)
+    })
+
+    it.each([
+      ['DRAFT', 'empresa ajena', 404, otherCompany],
+      ['DRAFT', 'estudiante', 404, student],
+      ['CLOSED', 'tutor', 404, tutor],
+      ['DRAFT', 'empresa dueña', 200, owner],
+      ['CLOSED', 'coordinación', 200, coordinator],
+      ['PUBLISHED', 'estudiante', 200, student],
+    ])('oferta %s como %s → %i', async (status, _label, expected, user) => {
+      prisma.offer.findUnique.mockResolvedValue(offerIn(status))
+      const res = await call('GET', '/offers/1', user)
+      expect(res.status).toBe(expected)
+    })
+
+    it('un estudiante que se postuló sigue viendo la oferta CLOSED', async () => {
+      prisma.offer.findUnique.mockResolvedValue(offerIn('CLOSED'))
+      prisma.application.count.mockResolvedValue(1)
+      const res = await call('GET', '/offers/1', student)
+      expect(res.status).toBe(200)
+      expect(prisma.application.count).toHaveBeenCalledWith({ where: { offerId: 1, studentId: 30 } })
+    })
+
+    it('no pide RUC ni correo de contacto de la empresa', async () => {
+      prisma.offer.findUnique.mockResolvedValue(offerIn('PUBLISHED'))
+      await call('GET', '/offers/1', student)
+      expect(prisma.offer.findUnique).toHaveBeenCalledWith({
+        where: { id: 1 },
+        include: { company: { select: { id: true, name: true } } },
+      })
     })
   })
 })

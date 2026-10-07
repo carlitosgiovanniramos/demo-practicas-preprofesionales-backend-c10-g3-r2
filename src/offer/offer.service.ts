@@ -3,6 +3,10 @@ import { ApplicationStatus, type Offer, OfferStatus, Role } from '@prisma/client
 import { PrismaService } from '../prisma/prisma.service'
 import type { CreateOfferDto } from './dto/create-offer.dto'
 
+// Lo único de la empresa que viaja junto a una oferta para cualquier rol:
+// RUC y correo de contacto no salen del directorio de empresas (H-04).
+const PUBLIC_COMPANY = { select: { id: true, name: true } } as const
+
 @Injectable()
 export class OfferService {
   constructor(private readonly prisma: PrismaService) {}
@@ -34,14 +38,28 @@ export class OfferService {
     return this.prisma.offer.findMany({
       where: { status: OfferStatus.PUBLISHED },
       orderBy: { publishedAt: 'desc' },
-      include: { company: true },
+      include: { company: PUBLIC_COMPANY },
     })
   }
 
-  async findOne(id: number) {
-    const offer = await this.prisma.offer.findUnique({ where: { id }, include: { company: true } })
-    if (!offer) throw new NotFoundException('oferta no encontrada')
+  async findOne(id: number, userId: number, role: Role) {
+    const offer = await this.prisma.offer.findUnique({ where: { id }, include: { company: PUBLIC_COMPANY } })
+    if (!offer || !(await this.canView(offer, userId, role))) throw new NotFoundException('oferta no encontrada')
     return offer
+  }
+
+  /**
+   * Una oferta publicada es catálogo y la ve cualquiera. Fuera de PUBLISHED
+   * solo la ven la coordinación, la empresa dueña y el estudiante que se
+   * postuló (su postulación sigue enlazando al detalle). Al resto se le
+   * responde 404 para no revelar que la oferta existe.
+   */
+  private async canView(offer: Offer, userId: number, role: Role): Promise<boolean> {
+    if (offer.status === OfferStatus.PUBLISHED || role === Role.COORDINATOR) return true
+    if (role === Role.STUDENT) {
+      return (await this.prisma.application.count({ where: { offerId: offer.id, studentId: userId } })) > 0
+    }
+    return (await this.actingCompanyId(userId, role)) === offer.companyId
   }
 
   // Ofertas de la empresa del usuario autenticado, en cualquier estado —
