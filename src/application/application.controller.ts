@@ -20,8 +20,11 @@ export class ApplicationController {
 
   @Get('offers/:offerId/applications')
   @Roles(Role.COMPANY, Role.COORDINATOR)
-  listByOffer(@Param('offerId', ParseIntPipe) offerId: number) {
-    return this.service.listByOffer(offerId)
+  listByOffer(
+    @Param('offerId', ParseIntPipe) offerId: number,
+    @Req() req: { user: { sub: number; role: Role } },
+  ) {
+    return this.service.listByOffer(offerId, req.user.sub, req.user.role)
   }
 
   @Get('applications/me')
@@ -32,7 +35,11 @@ export class ApplicationController {
 
   @Patch('applications/:id/decide')
   @Roles(Role.COMPANY, Role.COORDINATOR)
-  decide(@Param('id', ParseIntPipe) id: number, @Body() dto: DecideApplicationDto) {
-    return this.service.decide(id, dto.status)
+  decide(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: DecideApplicationDto,
+    @Req() req: { user: { sub: number; role: Role } },
+  ) {
+    return this.service.decide(id, dto.status, req.user.sub, req.user.role)
   }
 }
