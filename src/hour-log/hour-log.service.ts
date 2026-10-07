@@ -95,6 +95,9 @@ export class HourLogService {
   async review(id: number, status: HourLogStatus, reviewerId: number, note?: string) {
     const log = await this.prisma.hourLog.findUnique({ where: { id } })
     if (!log) throw new NotFoundException('registro de horas no encontrado')
+    const placement = await this.prisma.placement.findUnique({ where: { id: log.placementId } })
+    if (!placement) throw new NotFoundException('placement no encontrado')
+    if (placement.tutorId !== reviewerId) throw new ForbiddenException('solo el tutor asignado puede revisar este registro')
     if (log.status !== HourLogStatus.SUBMITTED) {
       throw new BadRequestException('solo se revisan registros en SUBMITTED')
     }
