@@ -64,8 +64,8 @@ Convención de la columna "Pertenencia":
 | `PlacementController` | 5 | 2 | 0 | 3 |
 | `HourLogController` | 4 | 3 | 1 | 1 |
 | `EvaluationController` | 2 | 2 | 0 | 1 |
-| `SyncController` | 2 | 2 | 0 | 0 |
-| **TOTAL** | **26** | **12** | **8** | **13** |
+| `SyncController` | 2 | 2 | 0 | 2 |
+| **TOTAL** | **26** | **12** | **8** | **15** |
 
 ## Hallazgos explotables — los 8 confirmados con curl
 
@@ -130,7 +130,7 @@ PII que se filtra si alguien prueba).
 
 | Ruta UI | Página | Endpoint consumido |
 |---------|--------|--------------------|
-| `/practicantes` | `MyStudentsPage.tsx` | (asume `GET /api/placements?` — confirmar) |
+| `/practicantes` | `MyStudentsPage.tsx` | Ninguno directo: lee `db.placements` y `db.hourLogs` (Dexie), poblados por `GET /api/sync/pull` |
 | `/practicantes/:id/horas` | `ReviewHoursPage.tsx` | `GET /api/placements/:id/hour-logs`, `PATCH /api/hour-logs/:id/review` |
 | `/practicantes/:id/evaluar` | `EvaluatePage.tsx` | `POST /api/evaluations` |
 
