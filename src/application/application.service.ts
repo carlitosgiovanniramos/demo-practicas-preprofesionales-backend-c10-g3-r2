@@ -1,5 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
 import { ApplicationStatus, Role } from '@prisma/client'
+import { PUBLIC_COMPANY } from '../company/public-company'
 import { OfferService } from '../offer/offer.service'
 import { PrismaService } from '../prisma/prisma.service'
 
@@ -17,12 +18,13 @@ export class ApplicationService {
   }
 
   // Postulaciones del propio estudiante, con la oferta y la empresa incluidas
-  // para que la pantalla no tenga que resolverlas con llamadas aparte.
+  // para que la pantalla no tenga que resolverlas con llamadas aparte. De la
+  // empresa solo la parte pública (H-04).
   listForStudent(studentId: number) {
     return this.prisma.application.findMany({
       where: { studentId },
       orderBy: { submittedAt: 'desc' },
-      include: { offer: { include: { company: true } } },
+      include: { offer: { include: { company: PUBLIC_COMPANY } } },
     })
   }
 

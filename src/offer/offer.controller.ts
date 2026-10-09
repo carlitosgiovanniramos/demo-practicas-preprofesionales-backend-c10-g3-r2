@@ -25,8 +25,8 @@ export class OfferController {
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.service.findOne(id)
+  findOne(@Param('id', ParseIntPipe) id: number, @Req() req: { user: { sub: number; role: Role } }) {
+    return this.service.findOne(id, req.user.sub, req.user.role)
   }
 
   @Post()

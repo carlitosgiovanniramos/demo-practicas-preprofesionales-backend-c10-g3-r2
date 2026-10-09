@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common'
+import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common'
 import { Role } from '@prisma/client'
 import { Roles } from '../auth/decorators/roles.decorator'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
@@ -12,8 +12,9 @@ export class CompanyController {
   constructor(private readonly service: CompanyService) {}
 
   @Get()
-  findAll() {
-    return this.service.findAll()
+  @Roles(Role.COORDINATOR, Role.COMPANY)
+  findAll(@Req() req: { user: { sub: number; role: Role } }) {
+    return this.service.findAll(req.user.sub, req.user.role)
   }
 
   @Post()
