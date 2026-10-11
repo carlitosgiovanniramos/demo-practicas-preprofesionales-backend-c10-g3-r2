@@ -27,6 +27,33 @@ describe('ApplicationService', () => {
     )
   })
 
+  describe('apply', () => {
+    it('creates a submitted application for the student', async () => {
+      prisma.application.create.mockImplementation(({ data }) => Promise.resolve({ id: 9, ...data }))
+
+      const result = await service.apply(1, 10, 'Quiero aprender')
+
+      expect(prisma.application.create).toHaveBeenCalledWith({
+        data: { offerId: 1, studentId: 10, motivation: 'Quiero aprender', status: 'SUBMITTED' },
+      })
+      expect(result.id).toBe(9)
+    })
+  })
+
+  describe('listForStudent', () => {
+    it('includes only the public company fields of each offer', async () => {
+      prisma.application.findMany.mockResolvedValue([])
+
+      await service.listForStudent(10)
+
+      expect(prisma.application.findMany).toHaveBeenCalledWith({
+        where: { studentId: 10 },
+        orderBy: { submittedAt: 'desc' },
+        include: { offer: { include: { company: { select: { id: true, name: true } } } } },
+      })
+    })
+  })
+
   describe('decide', () => {
     beforeEach(() => {
       prisma.application.findUnique.mockResolvedValue({ id: 7, offerId: 1, status: 'SUBMITTED' })
@@ -70,6 +97,32 @@ describe('ApplicationService', () => {
 
       expect(result.status).toBe('INTERVIEW')
       expect(prisma.user.findUnique).not.toHaveBeenCalled()
+    })
+
+    it('rejects deciding an application that was already decided', async () => {
+      prisma.application.findUnique.mockResolvedValue({ id: 7, offerId: 1, status: 'REJECTED' })
+
+      await expect(service.decide(7, 'ACCEPTED' as never, OWNER, 'COMPANY' as never)).rejects.toBeInstanceOf(
+        BadRequestException,
+      )
+      expect(prisma.application.update).not.toHaveBeenCalled()
+    })
+
+    it('fails with not found when the application does not exist', async () => {
+      prisma.application.findUnique.mockResolvedValue(null)
+
+      await expect(service.decide(7, 'REJECTED' as never, OWNER, 'COMPANY' as never)).rejects.toBeInstanceOf(
+        NotFoundException,
+      )
+    })
+
+    it('fails with not found when the offer disappears before accepting', async () => {
+      prisma.offer.findUnique.mockResolvedValueOnce({ id: 1, companyId: 100 }).mockResolvedValueOnce(null)
+
+      await expect(service.decide(7, 'ACCEPTED' as never, OWNER, 'COMPANY' as never)).rejects.toBeInstanceOf(
+        NotFoundException,
+      )
+      expect(prisma.application.update).not.toHaveBeenCalled()
     })
   })
 

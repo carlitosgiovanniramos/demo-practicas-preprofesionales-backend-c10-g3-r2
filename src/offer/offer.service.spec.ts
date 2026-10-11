@@ -103,6 +103,33 @@ describe('OfferService', () => {
     expect(result).toEqual([{ id: 1, companyId: 7, status: 'DRAFT' }])
   })
 
+  it('lists the public catalog with only the public company fields', async () => {
+    prisma.offer.findMany.mockResolvedValue([])
+
+    await service.findAll()
+
+    expect(prisma.offer.findMany).toHaveBeenCalledWith({
+      where: { status: 'PUBLISHED' },
+      orderBy: { publishedAt: 'desc' },
+      include: { company: { select: { id: true, name: true } } },
+    })
+  })
+
+  describe('findOne', () => {
+    it('fails with 404 when the offer does not exist', async () => {
+      prisma.offer.findUnique.mockResolvedValue(null)
+
+      await expect(service.findOne(99, 1, 'COORDINATOR' as never)).rejects.toThrow(NotFoundException)
+    })
+
+    it('hides an unpublished offer from a company user with no company associated', async () => {
+      prisma.offer.findUnique.mockResolvedValue({ id: 1, companyId: 100, status: 'DRAFT' })
+      prisma.user.findUnique.mockResolvedValue({ companyId: null })
+
+      await expect(service.findOne(1, 22, 'COMPANY' as never)).rejects.toThrow(NotFoundException)
+    })
+  })
+
   it('rejects listing offers for a user with no company', async () => {
     prisma.user.findUnique.mockResolvedValue({ companyId: null })
 
