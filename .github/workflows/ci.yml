@@ -26,6 +26,7 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://practicas:practicas@localhost:5432/practicas?schema=public
+      # Obligatoria: sin JWT_SECRET la API no arranca (D-07). Valor solo para CI.
       JWT_SECRET: ci-secret
 
     steps:
