@@ -9,9 +9,9 @@ import { ApplicationService } from './application.service'
 // sobrecupo de cupos en ApplicationService.decide().
 //
 // La ventana está entre la lectura del conteo de aceptadas y la escritura:
-//   - application.service.ts:75  lee cuántas postulaciones hay ACCEPTED (conteo en offer.service.ts:108-112)
-//   - application.service.ts:76  compara contra offer.seats
-//   - application.service.ts:79  escribe ACCEPTED (update por id, sin guarda)
+//   - application.service.ts:77  lee cuántas postulaciones hay ACCEPTED (conteo en offer.service.ts:123-127)
+//   - application.service.ts:78  compara contra offer.seats
+//   - application.service.ts:81  escribe ACCEPTED (update por id, sin guarda)
 // Dos aceptaciones que leen el conteo antes de que cualquiera escriba ven la
 // misma plaza libre y ambas pasan.
 //
