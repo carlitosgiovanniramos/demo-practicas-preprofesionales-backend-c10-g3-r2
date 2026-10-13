@@ -20,6 +20,8 @@ import { ApplicationService } from './application.service'
 // real del conteo y las libera juntas. Ninguna escribe hasta que ambas leyeron.
 //
 // Se salta si no hay DATABASE_URL, igual que sync.push.integration.spec.ts.
+// Qué cambiar cuando se arregle el bug, y los requisitos para correrla:
+// KNOWN_ISSUES.md, sección D-08.
 const hasDatabase = Boolean(process.env.DATABASE_URL)
 
 // Retiene a cada llamador hasta que lleguen `parties` y los libera a todos a la
