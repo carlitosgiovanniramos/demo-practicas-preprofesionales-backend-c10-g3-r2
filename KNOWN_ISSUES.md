@@ -77,3 +77,37 @@ esto no puede quedar así.
 Ya no hay valor por defecto: `src/auth/jwt-secret.ts` exige `JWT_SECRET` y, si falta o está
 vacía, la API no arranca y el error nombra la variable. Cómo generar uno: README, sección
 "Variables de entorno". Tests: `src/auth/jwt-secret.spec.ts`.
+
+## D-08 · Se pueden aceptar más postulaciones que cupos
+
+`src/application/application.service.ts`, método `decide()`, y `src/offer/offer.service.ts`,
+método `acceptedCount()`.
+
+Al aceptar una postulación, `decide()` cuenta las aceptadas (línea 77), compara contra `seats`
+(línea 78) y después escribe ACCEPTED (línea 81). Entre el conteo y la escritura no hay
+transacción, bloqueo ni escritura condicional, y el `update` filtra solo por `id`. Dos
+aceptaciones concurrentes leen la misma plaza libre y ambas pasan. El conteo está en
+`src/offer/offer.service.ts:123-127`.
+
+Reproducción determinista: `src/application/application.seats.integration.spec.ts`. Una barrera
+retiene a las dos aceptaciones después de su lectura del conteo, así que el entrelazado no
+depende del azar. El test de secuencia confirma que, sin concurrencia, la segunda aceptación sí
+se rechaza.
+
+Requisitos para correr la prueba: `DATABASE_URL` apuntando a Postgres real. Sin esa variable la
+prueba se salta, como la de D-01. Con `docker compose up -d postgres` y un `DATABASE_URL` válido,
+corre. Si el puerto 5432 ya está ocupado, levanta el contenedor con `POSTGRES_PORT=5433` y apunta
+`DATABASE_URL` a ese puerto.
+
+Cuando se arregle, hay que tocar esta prueba:
+
+- La prueba de concurrencia asserta hoy que ambas pasan (`fulfilled`) y que quedan 2 aceptadas.
+  Después del arreglo debe asertar que solo una pasa, que la otra falla con
+  `la oferta ya no tiene cupos`, y que queda 1 aceptada.
+- La prueba de secuencia no cambia.
+- Si el arreglo es una escritura condicional atómica, la barrera sigue siendo válida: ambas
+  llamadas leen el conteo antes de que cualquiera escriba. Si el arreglo es un bloqueo
+  (`SELECT ... FOR UPDATE` o una transacción serializable), la segunda llamada se bloquea antes de
+  llegar a `acceptedCount`. La barrera hará timeout a los 3 segundos y el test fallará con
+  `barrera: solo 1 de 2`. En ese caso hay que mover la barrera a otro punto del flujo.
+- Al cerrar el bug, marcar D-08 como RESUELTO y actualizar la referencia de líneas.
