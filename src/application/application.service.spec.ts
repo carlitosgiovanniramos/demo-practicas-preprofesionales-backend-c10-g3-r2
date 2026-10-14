@@ -77,6 +77,32 @@ describe('ApplicationService', () => {
       )
     })
 
+    // El conteo previo es solo cortesía: entre leerlo y escribir cabe otra
+    // aceptación, y las dos ven la misma plaza libre. Lo que impide el
+    // sobrecupo es el trigger, que cuenta de nuevo dentro del propio UPDATE.
+    // Aquí se fija lo único que es responsabilidad del servicio: que su
+    // negativa llegue a la empresa como un motivo y no como un fallo de base
+    // de datos.
+    it('traduce la negativa del trigger de cupos en un error legible', async () => {
+      offers.acceptedCount.mockResolvedValue(0)
+      prisma.application.update.mockRejectedValue(
+        new Error('offer_seats_exhausted: la oferta 1 ya no tiene cupos'),
+      )
+
+      await expect(service.decide(7, 'ACCEPTED' as never, OWNER, 'COMPANY' as never)).rejects.toThrow(
+        'la oferta ya no tiene cupos',
+      )
+    })
+
+    it('no disfraza de falta de cupos cualquier otro fallo de la base de datos', async () => {
+      offers.acceptedCount.mockResolvedValue(0)
+      prisma.application.update.mockRejectedValue(new Error('se cayó la conexión'))
+
+      await expect(service.decide(7, 'ACCEPTED' as never, OWNER, 'COMPANY' as never)).rejects.toThrow(
+        'se cayó la conexión',
+      )
+    })
+
     it('forbids a company from deciding an application to another company offer', async () => {
       await expect(service.decide(7, 'REJECTED' as never, OTHER_COMPANY, 'COMPANY' as never)).rejects.toThrow(
         ForbiddenException,
