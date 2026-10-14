@@ -78,7 +78,7 @@ Ya no hay valor por defecto: `src/auth/jwt-secret.ts` exige `JWT_SECRET` y, si f
 vacía, la API no arranca y el error nombra la variable. Cómo generar uno: README, sección
 "Variables de entorno". Tests: `src/auth/jwt-secret.spec.ts`.
 
-## D-08 · Se pueden aceptar más postulaciones que cupos
+## D-08 · Se pueden aceptar más postulaciones que cupos — RESUELTO
 
 `src/application/application.service.ts`, método `decide()`, y `src/offer/offer.service.ts`,
 método `acceptedCount()`.
@@ -99,15 +99,52 @@ prueba se salta, como la de D-01. Con `docker compose up -d postgres` y un `DATA
 corre. Si el puerto 5432 ya está ocupado, levanta el contenedor con `POSTGRES_PORT=5433` y apunta
 `DATABASE_URL` a ese puerto.
 
-Cuando se arregle, hay que tocar esta prueba:
+### RESUELTO
 
-- La prueba de concurrencia asserta hoy que ambas pasan (`fulfilled`) y que quedan 2 aceptadas.
-  Después del arreglo debe asertar que solo una pasa, que la otra falla con
-  `la oferta ya no tiene cupos`, y que queda 1 aceptada.
-- La prueba de secuencia no cambia.
-- Si el arreglo es una escritura condicional atómica, la barrera sigue siendo válida: ambas
-  llamadas leen el conteo antes de que cualquiera escriba. Si el arreglo es un bloqueo
-  (`SELECT ... FOR UPDATE` o una transacción serializable), la segunda llamada se bloquea antes de
-  llegar a `acceptedCount`. La barrera hará timeout a los 3 segundos y el test fallará con
-  `barrera: solo 1 de 2`. En ese caso hay que mover la barrera a otro punto del flujo.
-- Al cerrar el bug, marcar D-08 como RESUELTO y actualizar la referencia de líneas.
+El límite lo sostiene ahora la base de datos, con el trigger `applications_enforce_offer_seats`
+(migración `20261013203000_enforce_offer_seats`). Antes de dejar que una postulación pase a
+`ACCEPTED`, bloquea la fila de la oferta, cuenta las aceptadas reales y rechaza si ya no caben.
+
+Dos aceptaciones concurrentes ya no se cuelan las dos: el `FOR UPDATE` las serializa, de modo que la
+segunda cuenta solo después de que la primera haya confirmado y ya ve la plaza ocupada. Como todo
+ocurre dentro del propio `UPDATE`, no queda ventana entre comprobar y escribir.
+
+`ApplicationService.decide` traduce la negativa del trigger a `la oferta ya no tiene cupos`, para que
+la empresa lea el motivo y no un fallo de base de datos. El conteo previo con `acceptedCount` se
+conserva: resuelve el caso normal sin llegar a provocar el error, pero ya no es lo que sostiene la
+garantía.
+
+**Por qué el trigger y no un bloqueo en el servicio.** Con el bloqueo en código, otra ruta que lo
+olvidara reabriría el agujero; la historia pide que la base de datos también lo sostenga. Además
+habría invalidado la prueba de concurrencia: con `SELECT ... FOR UPDATE` en el servicio, la segunda
+llamada se bloquea antes de llegar a `acceptedCount` y la barrera expira a los 3 segundos.
+
+**Por qué no una columna contadora con `CHECK`.** Fue el primer intento y no se sostiene: sería un
+dato derivado del conteo de aceptadas, y el seed escribe postulaciones aceptadas sin pasar por
+`decide()`, así que el contador nacería desfasado en todas las ofertas. El trigger cuenta siempre el
+dato real y no hay nada que mantener en sincronía.
+
+**Lo que no cubre.** Vigila la transición a `ACCEPTED`, no la inserción. La API solo crea
+postulaciones en `SUBMITTED` y aceptar es siempre un `UPDATE`, así que por ahí no se puede entrar.
+Un `INSERT` directo de una postulación ya aceptada sí lo esquiva — ver D-09.
+
+Tests: `src/application/application.seats.integration.spec.ts` (requiere Postgres) y
+`src/application/application.service.spec.ts`.
+
+## D-09 · El seed crea ofertas con más aceptadas que cupos
+
+`prisma/seed.ts`: las ofertas se crean con `seats: 2 + nextInt(4)` y después las postulaciones
+aceptadas se reparten en round-robin (`offers[i % offers.length]`) sin mirar `seats`. Con los
+valores actuales quedan 6 aceptadas en cada una de las 36 ofertas, que tienen entre 2 y 5 plazas.
+
+No es el bug D-08: el seed escribe con `prisma.application.create` y nunca pasa por `decide()`, así
+que ni lo provocó ni lo provoca. Son datos de ejemplo que contradicen una regla del negocio.
+
+Importa por dos motivos. Cualquier intento de poner una restricción declarativa sobre los cupos
+falla contra estos datos — es lo que descartó la columna contadora al resolver D-08. Y una demo
+sobre el seed enseña ofertas que ya están sobrecupadas, que es justo lo que E2 dice que no puede
+pasar.
+
+Arreglarlo es repartir las aceptadas respetando `seats`, o subir `seats` para que quepan. Cambia los
+datos de la demo y obliga a `prisma migrate reset --force && pnpm db:seed`, así que se deja anotado
+en vez de hacerlo dentro de la historia de los cupos.
