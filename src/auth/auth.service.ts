@@ -12,7 +12,11 @@ export class AuthService {
   ) {}
 
   async login(email: string, password: string) {
-    const user = await this.prisma.user.findUnique({ where: { email } })
+    // `password` se lee solo para compararlo; la respuesta arma `user` campo a campo.
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+      select: { id: true, email: true, fullName: true, role: true, companyId: true, password: true },
+    })
     if (!user || !(await bcrypt.compare(password, user.password))) {
       throw new UnauthorizedException('credenciales inválidas')
     }
