@@ -1,5 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
 import { ApplicationStatus, Role } from '@prisma/client'
+import { PUBLIC_USER } from '../common/public-user'
 import { PUBLIC_COMPANY } from '../company/public-company'
 import { OfferService } from '../offer/offer.service'
 import { PrismaService } from '../prisma/prisma.service'
@@ -69,10 +70,7 @@ export class ApplicationService {
     const applications = await this.prisma.application.findMany({ where: { offerId } })
     const rows = []
     for (const application of applications) {
-      const student = await this.prisma.user.findUnique({
-        where: { id: application.studentId },
-        select: { id: true, email: true, fullName: true },
-      })
+      const student = await this.prisma.user.findUnique({ where: { id: application.studentId }, ...PUBLIC_USER })
       rows.push({ ...application, student })
     }
     return rows

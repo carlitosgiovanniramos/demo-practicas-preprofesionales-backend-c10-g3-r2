@@ -64,6 +64,17 @@ function barrier(parties: number, timeoutMs = 3000) {
   }
 }
 
+// Convierte una espera indefinida en un fallo con mensaje. Sin esto, una
+// consulta bloqueada por un candado deja el test colgado hasta que vitest lo
+// mate, sin decir por qué.
+function conTope<T>(promesa: Promise<T>, ms: number): Promise<T> {
+  let temporizador: ReturnType<typeof setTimeout>
+  const expira = new Promise<never>((_, reject) => {
+    temporizador = setTimeout(() => reject(new Error(`la consulta no respondió en ${ms} ms: la dejó esperando un candado`)), ms)
+  })
+  return Promise.race([promesa, expira]).finally(() => clearTimeout(temporizador)) as Promise<T>
+}
+
 describe.skipIf(!hasDatabase)('ApplicationService.decide: sobrecupo por concurrencia', () => {
   const prisma = new PrismaClient()
   const stamp = Date.now()
@@ -149,8 +160,8 @@ describe.skipIf(!hasDatabase)('ApplicationService.decide: sobrecupo por concurre
       service.decide(applicationB, ApplicationStatus.ACCEPTED, coordinatorId, Role.COORDINATOR),
     ])
 
-    // Las dos leen el conteo y ven la plaza libre, pero solo una la toma: la
-    // otra choca con la restricción al incrementar `acceptedSeats`.
+    // Las dos leen el conteo y ven la plaza libre, pero solo una la toma: el
+    // trigger cuenta de nuevo al escribir y rechaza a la segunda.
     const estados = results.map((r) => r.status).sort()
     expect(estados).toEqual(['fulfilled', 'rejected'])
 
@@ -182,5 +193,57 @@ describe.skipIf(!hasDatabase)('ApplicationService.decide: sobrecupo por concurre
       where: { offerId, status: ApplicationStatus.ACCEPTED },
     })
     expect(accepted).toBe(1)
+  })
+
+  // El candado del trigger tiene que excluir a otras aceptaciones, pero no a
+  // quien se postula. Postularse inserta una fila que referencia la oferta, y
+  // esa clave foránea toma un `FOR KEY SHARE` sobre ella: con `FOR UPDATE` el
+  // estudiante esperaría a que la empresa termine de aceptar a otro.
+  it('aceptar no bloquea a quien se postula a la misma oferta', async () => {
+    const { offerId, applicationIds } = await createOfferWithTwoApplications(2)
+    // Conexión aparte: la transacción de abajo retiene la suya hasta el final.
+    const otraConexion = new PrismaClient()
+    const estudiante = await prisma.user.create({
+      data: {
+        email: `estudiante-c-${stamp}-${offerId}@integracion.test`,
+        password: await bcrypt.hash('fixture-only', 1),
+        fullName: 'Estudiante c cupos',
+      },
+    })
+    userIds.push(estudiante.id)
+
+    let soltarAceptacion!: () => void
+    const retenida = new Promise<void>((resolve) => {
+      soltarAceptacion = resolve
+    })
+
+    // Acepta y se queda dentro de la transacción, con el candado tomado.
+    const aceptacion = prisma.$transaction(
+      async (tx) => {
+        await tx.application.update({
+          where: { id: applicationIds[0] },
+          data: { status: ApplicationStatus.ACCEPTED, decidedAt: new Date() },
+        })
+        await retenida
+      },
+      { timeout: 20_000 },
+    )
+
+    try {
+      // Margen para que la aceptación llegue al UPDATE y tome el candado.
+      await new Promise((resolve) => setTimeout(resolve, 300))
+
+      const postulacion = otraConexion.application.create({
+        data: { offerId, studentId: estudiante.id, motivation: 'Mientras otra aceptación sigue abierta.' },
+      })
+
+      // Con `FOR UPDATE` esto se quedaría esperando a que confirme la
+      // aceptación, y el tope lo convertiría en un fallo con mensaje.
+      await expect(conTope(postulacion, 3000)).resolves.toMatchObject({ offerId })
+    } finally {
+      soltarAceptacion()
+      await aceptacion
+      await otraConexion.$disconnect()
+    }
   })
 })

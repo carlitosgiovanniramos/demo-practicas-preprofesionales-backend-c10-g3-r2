@@ -105,9 +105,15 @@ El límite lo sostiene ahora la base de datos, con el trigger `applications_enfo
 (migración `20261013203000_enforce_offer_seats`). Antes de dejar que una postulación pase a
 `ACCEPTED`, bloquea la fila de la oferta, cuenta las aceptadas reales y rechaza si ya no caben.
 
-Dos aceptaciones concurrentes ya no se cuelan las dos: el `FOR UPDATE` las serializa, de modo que la
-segunda cuenta solo después de que la primera haya confirmado y ya ve la plaza ocupada. Como todo
-ocurre dentro del propio `UPDATE`, no queda ventana entre comprobar y escribir.
+Dos aceptaciones concurrentes ya no se cuelan las dos: el `FOR NO KEY UPDATE` las serializa, de modo
+que la segunda cuenta solo después de que la primera haya confirmado y ya ve la plaza ocupada. Como
+todo ocurre dentro del propio `UPDATE`, no queda ventana entre comprobar y escribir.
+
+El modo del candado importa y se estrechó después (migración `20261014210000_offer_seats_narrower_lock`).
+`FOR UPDATE` choca con el `FOR KEY SHARE` que toma cada postulación nueva por su clave foránea, así
+que aceptar dejaba esperando a cualquiera que se postulara a la misma oferta. `FOR NO KEY UPDATE` no
+choca con ese, pero sí consigo mismo, que es la única exclusión necesaria. Hay un test que lo fija:
+con el candado ancho, postularse no responde en 3 segundos.
 
 `ApplicationService.decide` traduce la negativa del trigger a `la oferta ya no tiene cupos`, para que
 la empresa lea el motivo y no un fallo de base de datos. El conteo previo con `acceptedCount` se
