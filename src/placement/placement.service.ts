@@ -1,5 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
 import { DocumentKind, DocumentStatus, PlacementStatus, Role } from '@prisma/client'
+import { PUBLIC_USER } from '../common/public-user'
 import { PrismaService } from '../prisma/prisma.service'
 import type { UploadDocumentDto } from './dto/upload-document.dto'
 
@@ -68,7 +69,7 @@ export class PlacementService {
       include: {
         company: true,
         // `tutor: true` filtraría el hash de contraseña del tutor en la respuesta.
-        tutor: { select: { id: true, fullName: true, email: true } },
+        tutor: PUBLIC_USER,
         documents: true,
       },
     })
