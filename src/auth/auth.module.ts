@@ -5,13 +5,17 @@ import { AuthService } from './auth.service'
 import { JwtAuthGuard } from './guards/jwt-auth.guard'
 import { RolesGuard } from './guards/roles.guard'
 import { readJwtSecret } from './jwt-secret'
+import { readAccessTokenTtlSeconds } from './auth-token-config'
 
 @Module({
   imports: [
     // Sin fallback: si falta JWT_SECRET, readJwtSecret lanza y Nest aborta el arranque.
     JwtModule.registerAsync({
       global: true,
-      useFactory: () => ({ secret: readJwtSecret() }),
+      useFactory: () => ({
+        secret: readJwtSecret(),
+        signOptions: { expiresIn: readAccessTokenTtlSeconds() },
+      }),
     }),
   ],
   controllers: [AuthController],

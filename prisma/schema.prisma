@@ -72,6 +72,7 @@ model User {
 
   company           Company?      @relation(fields: [companyId], references: [id])
   companyId         Int?
+  authSessions      AuthSession[]
   applications      Application[]
   studentPlacements Placement[]   @relation("StudentPlacements")
   tutorPlacements   Placement[]   @relation("TutorPlacements")
@@ -81,6 +82,20 @@ model User {
   validatedDocuments Document[]   @relation("DocValidator")
 
   @@map("users")
+}
+
+model AuthSession {
+  id               String    @id @default(cuid())
+  userId           Int
+  refreshTokenHash String    @unique
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@map("auth_sessions")
 }
 
 model Company {

@@ -34,6 +34,8 @@ máquina, cambia `POSTGRES_PORT` y `DATABASE_URL` en `.env` antes de `docker com
 |---|---|---|
 | `DATABASE_URL` | (requerido) | Cadena de conexión PostgreSQL |
 | `JWT_SECRET` | (requerido) | Secreto para firmar JWTs |
+| `JWT_ACCESS_TTL_SECONDS` | `900` | Vida corta del token de acceso, en segundos (1–3600) |
+| `JWT_REFRESH_TTL_DAYS` | `7` | Vida sin actividad de la sesión renovable, en días (1–365) |
 | `PORT` | `3000` | Puerto donde escucha la API |
 | `CORS_ORIGIN` | `http://localhost:5173` | Origen permitido para requests desde el navegador (frontend Vite) |
 
@@ -54,6 +56,11 @@ con cualquier rol, así que:
 - Genera uno distinto por entorno (local, CI, staging, producción). En producción guárdalo
   en el gestor de secretos de la plataforma, nunca en el repo.
 - Cambiarlo invalida todos los tokens emitidos: los usuarios tendrán que volver a loguearse.
+
+El access token expira en 15 minutos por defecto. La sesión se renueva con un refresh token
+aleatorio, de un solo uso, guardado en una cookie `HttpOnly`; su hash es el único valor persistido.
+Cada renovación invalida el token anterior. Ajusta `JWT_ACCESS_TTL_SECONDS` y
+`JWT_REFRESH_TTL_DAYS` según el entorno.
 
 Usuarios del seed (contraseña `yura1234` para todos):
 
