@@ -4,6 +4,23 @@ import { PUBLIC_COMPANY } from '../company/public-company'
 import { OfferService } from '../offer/offer.service'
 import { PrismaService } from '../prisma/prisma.service'
 
+/**
+ * Marca con la que el trigger `applications_enforce_offer_seats` avisa de que
+ * la oferta se llenó. Ver D-08 en `KNOWN_ISSUES.md`.
+ */
+const SEATS_EXHAUSTED = 'offer_seats_exhausted'
+
+/**
+ * El error del trigger llega envuelto por Prisma, y la clase y el código varían
+ * entre versiones del motor. Lo estable es la marca del mensaje, que además es
+ * nuestra: ningún otro fallo puede mencionarla por casualidad.
+ */
+function isSeatsExhausted(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+  const meta = 'meta' in error ? JSON.stringify(error.meta) : ''
+  return `${error.message} ${meta}`.includes(SEATS_EXHAUSTED)
+}
+
 @Injectable()
 export class ApplicationService {
   constructor(
@@ -78,9 +95,19 @@ export class ApplicationService {
       if (accepted >= offer.seats) throw new BadRequestException('la oferta ya no tiene cupos')
     }
 
-    return this.prisma.application.update({
-      where: { id },
-      data: { status, decidedAt: new Date() },
-    })
+    // El conteo de arriba no basta: entre leerlo y escribir cabe otra
+    // aceptación, y las dos ven la misma plaza libre (D-08). Lo que lo impide
+    // es el trigger `applications_enforce_offer_seats`, que vuelve a contar
+    // dentro de este mismo UPDATE y con la oferta bloqueada. Aquí solo queda
+    // traducir su negativa a algo que la empresa pueda entender.
+    try {
+      return await this.prisma.application.update({
+        where: { id },
+        data: { status, decidedAt: new Date() },
+      })
+    } catch (error) {
+      if (isSeatsExhausted(error)) throw new BadRequestException('la oferta ya no tiene cupos')
+      throw error
+    }
   }
 }
