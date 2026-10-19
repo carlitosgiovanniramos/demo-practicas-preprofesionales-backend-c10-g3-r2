@@ -10,6 +10,16 @@ import {
 } from './checkpoint'
 import { buildKeysetWhere } from './keyset'
 import type { SyncOperationInput, SyncOperationResult } from './dto/push.dto'
+import { hourLogRangeError } from '../hour-log/hour-log.rules'
+
+// D-06: el push aplica la misma regla de horas que el DTO y el servicio.
+function hourRangeReason(payload: Record<string, unknown>): string | null {
+  return hourLogRangeError({
+    hours: Number(payload.hours),
+    startTime: String(payload.startTime),
+    endTime: String(payload.endTime),
+  })
+}
 
 export type SyncEntity = 'placement' | 'hourLog' | 'document' | 'evaluation'
 
@@ -233,12 +243,19 @@ export class SyncService {
       return { clientOpId: op.clientOpId, status: 'rejected', server: null, reason: 'entidad no sincronizable desde el cliente' }
     }
 
+    // Crear y editar aplican la misma regla de horas que el DTO y el servicio.
+    if (op.op !== 'delete') {
+      const rangeReason = hourRangeReason(op.payload)
+      if (rangeReason) {
+        return { clientOpId: op.clientOpId, status: 'rejected', server: null, reason: rangeReason }
+      }
+    }
+
     if (op.op === 'create') {
       const placement = await client.placement.findUnique({ where: { id: Number(op.payload.placementId) } })
       if (!placement || placement.studentId !== userId) {
         return { clientOpId: op.clientOpId, status: 'rejected', server: null, reason: 'el placement no pertenece al usuario' }
       }
-
       const created = await client.hourLog.create({
         data: {
           placementId: Number(op.payload.placementId),

@@ -58,13 +58,16 @@ acreditación adentro. Funciona — hasta donde sabemos — pero solo hay dos te
 cualquier cambio es a ciegas. Si te toca modificar reglas de acreditación, escribe primero
 tests de los casos que hoy funcionan.
 
-## D-06 · La validación de horas está en tres lados
+## D-06 · La validación de horas estaba en tres lados — RESUELTO en el back
 
-`src/hour-log/dto/create-hour-log.dto.ts`, `src/hour-log/hour-log.service.ts` y el formulario
-del frontend.
+La regla vive ahora en `src/hour-log/hour-log.rules.ts` (`HOUR_LOG_LIMITS`: 0.5 a 8 horas por
+registro). La usan el DTO, el servicio (crear y exportar) y la sincronización. El valor lo
+confirmó la coordinación de vinculación. Las copias anteriores eran: DTO con tope 12, `create`
+y `exportRows` con tope 10, y la sincronización sin límite. El frontend tiene su espejo en
+`src/lib/hour-log-rules.ts`; cambiar el límite exige cambiar ambos repos.
 
-Y ya divergieron: el DTO acepta hasta 12 horas por registro y el servicio corta en 10. El
-formulario tiene su propia versión. Nadie recuerda cuál es la correcta.
+Tests: `src/hour-log/hour-log.rules.spec.ts`, `src/hour-log/hour-log.service.spec.ts` y
+`src/sync/sync.service.spec.ts`.
 
 ## D-07 · `JWT_SECRET` tiene un fallback hardcodeado — RESUELTO
 

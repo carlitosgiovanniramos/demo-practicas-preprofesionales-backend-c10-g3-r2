@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SyncService, keysetAndScope, pickEntityCheckpoints } from './sync.service'
 import { decodeCheckpoint, encodeCheckpoint } from './checkpoint'
+import { HOUR_LOG_HOURS_MESSAGE, HOUR_LOG_LIMITS } from '../hour-log/hour-log.rules'
 
 type Row = {
   id: number
@@ -182,6 +183,35 @@ describe('SyncService', () => {
 
     expect(result.results[0]).toMatchObject({ status: 'applied' })
     expect(prisma.syncOperation.create).toHaveBeenCalled()
+  })
+
+  // D-06: el push no pasaba por la regla de horas; ahora rechaza lo mismo que el DTO y el servicio.
+  describe('push · valida horas con la regla única (D-06)', () => {
+    const createOf = (hours: number, clientOpId = '33333333-3333-4333-8333-333333333333') => ({
+      clientOpId,
+      entity: 'hourLog' as const,
+      op: 'create' as const,
+      baseVersion: null,
+      payload: { placementId: 1, date: '2026-04-02', startTime: '08:00', endTime: '12:00', hours, activity: 'Soporte' },
+    })
+
+    it('rechaza una creación con más horas que el máximo sin escribir el registro', async () => {
+      prisma.placement.findUnique.mockResolvedValue({ id: 1, studentId: 5 })
+
+      const result = await service.push(5, [createOf(HOUR_LOG_LIMITS.maxHours + 1)])
+
+      expect(result.results[0]).toMatchObject({ status: 'rejected', reason: HOUR_LOG_HOURS_MESSAGE })
+      expect(prisma.hourLog.create).not.toHaveBeenCalled()
+    })
+
+    it('acepta una creación en el máximo exacto', async () => {
+      prisma.placement.findUnique.mockResolvedValue({ id: 1, studentId: 5 })
+      prisma.hourLog.create.mockResolvedValue({ id: 78, version: 1 })
+
+      const result = await service.push(5, [createOf(HOUR_LOG_LIMITS.maxHours, '44444444-4444-4444-8444-444444444444')])
+
+      expect(result.results[0]).toMatchObject({ status: 'applied' })
+    })
   })
 
   describe('cross-entity pagination', () => {
