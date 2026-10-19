@@ -112,12 +112,10 @@ function evaluationVerdict(input: AccreditationInput): Verdict {
     return { level: 'PENDIENTE', reasons: ['falta evaluación del tutor'] }
   }
   if (isBelowMinimum(tutorScore)) {
+    // Solo llegamos aquí con informe final: documentsVerdict corta antes si falta.
     return {
       level: 'NO_ACREDITADO',
-      reasons: [
-        'evaluación del tutor por debajo del mínimo',
-        ...(input.hasFinalReport ? ['informe final entregado pese a evaluación baja'] : []),
-      ],
+      reasons: ['evaluación del tutor por debajo del mínimo', 'informe final entregado pese a evaluación baja'],
     }
   }
   const companyScore = input.companyEvaluationScore
