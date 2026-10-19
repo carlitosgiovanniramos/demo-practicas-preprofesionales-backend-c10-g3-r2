@@ -204,6 +204,8 @@ model HourLog {
   reviewedBy User?     @relation("HourLogReviewer", fields: [reviewedById], references: [id])
 
   @@index([updatedAt, id])
+  // Libro de horas por práctica: filtra por placementId y ordena por date (listForPlacement).
+  @@index([placementId, date])
   @@map("hour_logs")
 }
 
