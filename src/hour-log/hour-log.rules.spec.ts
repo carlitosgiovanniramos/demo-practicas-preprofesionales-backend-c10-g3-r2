@@ -30,9 +30,9 @@ describe('regla única de horas por registro (D-06)', () => {
     expect(HOUR_LOG_HOURS_MESSAGE).toBe('Las horas deben estar entre 0.5 y 8 por registro')
   })
 
-  it('rechaza una hora de inicio que no es anterior a la de fin', () => {
+  it('rechaza una hora de fin que no es posterior a la de inicio, con el mismo texto que el front', () => {
     expect(hourLogRangeError({ hours: 4, startTime: '12:00', endTime: '08:00' })).toBe(
-      'la hora de inicio debe ser anterior a la de fin',
+      'La hora de fin debe ser posterior a la de inicio',
     )
   })
 

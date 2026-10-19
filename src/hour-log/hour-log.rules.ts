@@ -9,7 +9,8 @@ export const HOUR_LOG_LIMITS = Object.freeze({ minHours: 0.5, maxHours: 8 })
 
 export const HOUR_LOG_HOURS_MESSAGE = `Las horas deben estar entre ${HOUR_LOG_LIMITS.minHours} y ${HOUR_LOG_LIMITS.maxHours} por registro`
 
-const TIME_ORDER_MESSAGE = 'la hora de inicio debe ser anterior a la de fin'
+// Mismo texto que el frontend (src/lib/hour-log-rules.ts): el usuario ve el mismo mensaje venga de donde venga.
+const TIME_ORDER_MESSAGE = 'La hora de fin debe ser posterior a la de inicio'
 
 function toMinutes(time: string): number {
   const [hour, minute] = time.split(':').map(Number)
