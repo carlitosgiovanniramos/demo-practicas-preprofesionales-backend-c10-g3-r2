@@ -5,12 +5,16 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../auth/guards/roles.guard'
 import { CreateHourLogDto } from './dto/create-hour-log.dto'
 import { ReviewHourLogDto } from './dto/review-hour-log.dto'
+import { HourLogReportService } from './hour-log-report.service'
 import { HourLogService } from './hour-log.service'
 
 @Controller()
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class HourLogController {
-  constructor(private readonly service: HourLogService) {}
+  constructor(
+    private readonly service: HourLogService,
+    private readonly reports: HourLogReportService,
+  ) {}
 
   @Post('hour-logs')
   @Roles(Role.STUDENT)
@@ -27,7 +31,7 @@ export class HourLogController {
   @Get('placements/:id/progress')
   async progress(@Param('id', ParseIntPipe) id: number, @Req() req: { user: { sub: number; role: Role } }) {
     await this.service.assertPlacementAccess(id, req.user.sub, req.user.role)
-    return this.service.progressReport(id)
+    return this.reports.progressReport(id)
   }
 
   @Patch('hour-logs/:id/review')
