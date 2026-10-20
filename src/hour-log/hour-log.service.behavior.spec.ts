@@ -18,7 +18,7 @@ describe('HourLogService behavior', () => {
 
   const validDto = () => ({
     placementId: 1,
-    date: new Date('2026-04-01'),
+    date: '2026-04-01',
     startTime: '08:00',
     endTime: '12:00',
     hours: 4,
