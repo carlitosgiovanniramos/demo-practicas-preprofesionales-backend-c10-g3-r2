@@ -21,6 +21,17 @@ function hourRangeReason(payload: Record<string, unknown>): string | null {
   })
 }
 
+// Campos editables de una hora, compartidos por crear y actualizar.
+function hourLogFields(payload: Record<string, unknown>) {
+  return {
+    date: new Date(String(payload.date)),
+    startTime: String(payload.startTime),
+    endTime: String(payload.endTime),
+    hours: Number(payload.hours),
+    activity: String(payload.activity),
+  }
+}
+
 export type SyncEntity = 'placement' | 'hourLog' | 'document' | 'evaluation'
 
 function liftToV2(decoded: Checkpoint): CheckpointV2 {
@@ -252,22 +263,7 @@ export class SyncService {
     }
 
     if (op.op === 'create') {
-      const placement = await client.placement.findUnique({ where: { id: Number(op.payload.placementId) } })
-      if (!placement || placement.studentId !== userId) {
-        return { clientOpId: op.clientOpId, status: 'rejected', server: null, reason: 'el placement no pertenece al usuario' }
-      }
-      const created = await client.hourLog.create({
-        data: {
-          placementId: Number(op.payload.placementId),
-          date: new Date(String(op.payload.date)),
-          startTime: String(op.payload.startTime),
-          endTime: String(op.payload.endTime),
-          hours: Number(op.payload.hours),
-          activity: String(op.payload.activity),
-          status: 'SUBMITTED',
-        },
-      })
-      return { clientOpId: op.clientOpId, status: 'applied', server: created as never, reason: null }
+      return this.applyCreate(client, userId, op)
     }
 
     const existing = await client.hourLog.findUnique({
@@ -296,19 +292,7 @@ export class SyncService {
     }
 
     if (op.op === 'update') {
-      // La actualización aplica los campos recibidos y avanza version.
-      const updated = await client.hourLog.update({
-        where: { id: Number(op.payload.id) },
-        data: {
-          date: new Date(String(op.payload.date)),
-          startTime: String(op.payload.startTime),
-          endTime: String(op.payload.endTime),
-          hours: Number(op.payload.hours),
-          activity: String(op.payload.activity),
-          version: { increment: 1 },
-        },
-      })
-      return { clientOpId: op.clientOpId, status: 'applied', server: updated as never, reason: null }
+      return this.applyUpdate(client, op)
     }
 
     const deleted = await client.hourLog.update({
@@ -316,5 +300,29 @@ export class SyncService {
       data: { deletedAt: new Date(), version: { increment: 1 } },
     })
     return { clientOpId: op.clientOpId, status: 'applied', server: deleted as never, reason: null }
+  }
+
+  private async applyCreate(client: OperationClient, userId: number, op: SyncOperationInput): Promise<SyncOperationResult> {
+    const placement = await client.placement.findUnique({ where: { id: Number(op.payload.placementId) } })
+    if (!placement || placement.studentId !== userId) {
+      return { clientOpId: op.clientOpId, status: 'rejected', server: null, reason: 'el placement no pertenece al usuario' }
+    }
+    const created = await client.hourLog.create({
+      data: {
+        placementId: Number(op.payload.placementId),
+        ...hourLogFields(op.payload),
+        status: 'SUBMITTED',
+      },
+    })
+    return { clientOpId: op.clientOpId, status: 'applied', server: created as never, reason: null }
+  }
+
+  // La actualización aplica los campos recibidos y avanza version.
+  private async applyUpdate(client: OperationClient, op: SyncOperationInput): Promise<SyncOperationResult> {
+    const updated = await client.hourLog.update({
+      where: { id: Number(op.payload.id) },
+      data: { ...hourLogFields(op.payload), version: { increment: 1 } },
+    })
+    return { clientOpId: op.clientOpId, status: 'applied', server: updated as never, reason: null }
   }
 }

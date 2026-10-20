@@ -2,13 +2,14 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { HourLogStatus, PlacementStatus, Role } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import type { CreateHourLogDto } from './dto/create-hour-log.dto'
+import { canAccessPlacement } from '../placement/placement-access'
 import { hourLogRangeError } from './hour-log.rules'
 
 // D-02 (deuda sembrada, documentada a propósito): este servicio es un
 // "god service". `create` valida el DTO, persiste el registro y dispara
 // una notificación al tutor; `review` maneja la máquina de estados de
 // aprobación; `approvedHours`/`progressReport`/`weeklySummary`/`exportRows`
-// agregan y transforman datos para reportes. Todo vive en el mismo archivo
+// agregan y transforman datos para reportes. Ese código convive en el mismo archivo
 // a propósito: no lo dividas en `HourLogValidationService`,
 // `HourLogNotificationService` ni `HourLogReportService`. El objetivo de
 // producto es que el equipo que reciba el template identifique el problema
@@ -68,8 +69,7 @@ export class HourLogService {
   async assertPlacementAccess(placementId: number, userId: number, role: Role): Promise<void> {
     const placement = await this.prisma.placement.findUnique({ where: { id: placementId } })
     if (!placement) throw new NotFoundException('placement no encontrado')
-    const allowed = role === Role.COORDINATOR || placement.studentId === userId || placement.tutorId === userId
-    if (!allowed) throw new ForbiddenException('no tienes acceso a este placement')
+    if (!canAccessPlacement(placement, userId, role)) throw new ForbiddenException('no tienes acceso a este placement')
   }
 
   /** Lista el libro de horas completo de un placement, más reciente primero. */
