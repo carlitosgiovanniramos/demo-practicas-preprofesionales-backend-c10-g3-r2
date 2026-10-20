@@ -155,21 +155,29 @@ describe('ApplicationService', () => {
   describe('listByOffer', () => {
     beforeEach(() => {
       prisma.application.findMany.mockResolvedValue([
-        { id: 1, studentId: 10, status: 'SUBMITTED' },
-        { id: 2, studentId: 11, status: 'SUBMITTED' },
+        { id: 1, studentId: 10, status: 'SUBMITTED', student: { id: 10, fullName: 'Estudiante 10' } },
+        { id: 2, studentId: 11, status: 'SUBMITTED', student: { id: 11, fullName: 'Estudiante 11' } },
       ])
     })
 
     it('lists applications of its own offer with their student', async () => {
-      prisma.user.findUnique
-        .mockResolvedValueOnce({ companyId: 100 })
-        .mockResolvedValueOnce({ id: 10, fullName: 'Estudiante 10' })
-        .mockResolvedValueOnce({ id: 11, fullName: 'Estudiante 11' })
-
       const result = await service.listByOffer(1, OWNER, 'COMPANY' as never)
 
       expect(result).toHaveLength(2)
       expect(result[0]).toMatchObject({ id: 1, student: { fullName: 'Estudiante 10' } })
+    })
+
+    // D-04: el candidato viaja en la misma consulta que la lista. Si alguien
+    // vuelve a resolverlo aparte, el conteo de consultas vuelve a crecer con
+    // el número de postulantes y esta prueba lo avisa.
+    it('trae a los candidatos en la misma consulta y solo con sus campos públicos', async () => {
+      await service.listByOffer(1, COORDINATOR, 'COORDINATOR' as never)
+
+      expect(prisma.application.findMany).toHaveBeenCalledWith({
+        where: { offerId: 1 },
+        include: { student: { select: { id: true, fullName: true, email: true } } },
+      })
+      expect(prisma.user.findUnique).not.toHaveBeenCalled()
     })
 
     it('forbids a company from listing applications of another company offer', async () => {

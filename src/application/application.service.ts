@@ -64,16 +64,21 @@ export class ApplicationService {
     if (!allowed) throw new ForbiddenException('la oferta no pertenece a tu empresa')
   }
 
-  // D-04: N+1. Una consulta por la lista y otra por cada estudiante.
+  /**
+   * Postulaciones de una oferta, cada una con su candidato.
+   *
+   * D-04 (resuelto): antes se pedía la lista y después una consulta por cada
+   * candidato, así que una oferta con 200 postulaciones costaba 200 viajes a
+   * la base. Ahora el estudiante viaja en la misma consulta y la cantidad de
+   * consultas deja de depender de cuántos postulantes haya. De la persona
+   * sigue viajando solo `PUBLIC_USER`, igual que antes.
+   */
   async listByOffer(offerId: number, userId: number, role: Role) {
     await this.assertOfferAccess(offerId, userId, role)
-    const applications = await this.prisma.application.findMany({ where: { offerId } })
-    const rows = []
-    for (const application of applications) {
-      const student = await this.prisma.user.findUnique({ where: { id: application.studentId }, ...PUBLIC_USER })
-      rows.push({ ...application, student })
-    }
-    return rows
+    return this.prisma.application.findMany({
+      where: { offerId },
+      include: { student: PUBLIC_USER },
+    })
   }
 
   async decide(id: number, status: ApplicationStatus, userId: number, role: Role) {

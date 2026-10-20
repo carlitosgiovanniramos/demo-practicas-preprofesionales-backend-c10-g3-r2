@@ -42,12 +42,20 @@ Cero. Lo hicimos en la última semana y no alcanzamos. Es el módulo que más ba
 del proyecto. Si vas a tocar rúbricas o scores, escribe los tests primero — nadie sabe qué se
 rompe.
 
-## D-04 · La lista de postulaciones va lenta
+## D-04 · La lista de postulaciones va lenta — RESUELTO
 
 `src/application/application.service.ts`, método `listByOffer`.
 
-Con menos de 200 postulaciones no se nota. Arriba de eso, la pantalla de la empresa tarda
-varios segundos. Sospechamos que es cómo traemos los estudiantes, pero no lo medimos.
+La sospecha era correcta: el método pedía la lista y después una consulta por cada
+candidato, así que el costo crecía con el número de postulantes. Medido sobre Postgres
+local: 200 postulaciones eran 201 consultas y 136 ms; 1.000 eran 1.001 consultas y 690 ms.
+
+Ahora el candidato viaja en la misma consulta de la lista (`include`), y son 2 consultas
+siempre: 9 ms con 200 postulaciones y 14 ms con 1.000. La respuesta no cambió de forma y
+del candidato sigue viajando solo `PUBLIC_USER`.
+
+La prueba que lo sostiene es `src/application/application.list-by-offer.integration.spec.ts`:
+mide la misma pantalla con 5 y con 200 postulantes y exige que haga las mismas consultas.
 
 ## D-05 · `calculateAccreditationStatus` da miedo tocarla
 
