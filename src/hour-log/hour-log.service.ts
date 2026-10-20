@@ -1,15 +1,19 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common'
 import { HourLogStatus, PlacementStatus, Role } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import type { CreateHourLogDto } from './dto/create-hour-log.dto'
 import { canAccessPlacement } from '../placement/placement-access'
 import { hourLogRangeError } from './hour-log.rules'
+import { HOUR_LOG_NOTIFIER, type HourLogNotifier } from './hour-log-notification.service'
 
-// G3-22: los reportes y la exportación CSV viven en servicios separados.
-// La notificación al tutor se aísla en la siguiente parte de esta cadena.
+// G3-22: la creación, revisión, acceso, reportes, CSV y notificaciones
+// se delegan a unidades enfocadas en cada responsabilidad.
 @Injectable()
 export class HourLogService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() @Inject(HOUR_LOG_NOTIFIER) private readonly notifier?: HourLogNotifier,
+  ) {}
 
   /**
    * Registra una jornada de horas para el placement del estudiante.
@@ -45,13 +49,8 @@ export class HourLogService {
       },
     })
 
-    this.notifyTutor(placement.tutorId, created.id)
+    this.notifier?.notifyTutor(placement.tutorId, created.id)
     return created
-  }
-
-  // D-02: notificación dentro del mismo servicio que persiste y valida.
-  private notifyTutor(tutorId: number, hourLogId: number): void {
-    console.log(`[notificación] tutor ${tutorId}: nueva hora registrada #${hourLogId}`)
   }
 
   /**
