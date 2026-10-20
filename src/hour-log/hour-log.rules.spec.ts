@@ -3,7 +3,7 @@ import { plainToInstance } from 'class-transformer'
 import { validate } from 'class-validator'
 import { describe, expect, it } from 'vitest'
 import { CreateHourLogDto } from './dto/create-hour-log.dto'
-import { HOUR_LOG_HOURS_MESSAGE, HOUR_LOG_LIMITS, hourLogRangeError } from './hour-log.rules'
+import { HOUR_LOG_HOURS_MESSAGE, HOUR_LOG_LIMITS, HOUR_LOG_TIME_FORMAT_MESSAGE, hourLogRangeError } from './hour-log.rules'
 
 const window = { startTime: '08:00', endTime: '12:00' }
 
@@ -28,6 +28,22 @@ describe('regla única de horas por registro (D-06)', () => {
 
   it('usa el mensaje exacto que ve el estudiante', () => {
     expect(HOUR_LOG_HOURS_MESSAGE).toBe('Las horas deben estar entre 0.5 y 8 por registro')
+  })
+
+  it.each([
+    ['abc', 'def'],
+    ['8:00', '12:00'],
+    ['08:00', '24:00'],
+    ['08:60', '12:00'],
+    ['08:00', ''],
+    [' 08:00', '12:00'],
+    ['08:00:00', '12:00'],
+  ])('rechaza el formato HH:mm inválido (%s, %s) antes de comparar las horas', (startTime, endTime) => {
+    expect(hourLogRangeError({ hours: 4, startTime, endTime })).toBe(HOUR_LOG_TIME_FORMAT_MESSAGE)
+  })
+
+  it('acepta los extremos válidos del formato HH:mm', () => {
+    expect(hourLogRangeError({ hours: 4, startTime: '00:00', endTime: '23:59' })).toBeNull()
   })
 
   it('rechaza una hora de fin que no es posterior a la de inicio, con el mismo texto que el front', () => {

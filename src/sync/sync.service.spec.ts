@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SyncService, keysetAndScope, pickEntityCheckpoints } from './sync.service'
 import { decodeCheckpoint, encodeCheckpoint } from './checkpoint'
-import { HOUR_LOG_HOURS_MESSAGE, HOUR_LOG_LIMITS } from '../hour-log/hour-log.rules'
+import { HOUR_LOG_HOURS_MESSAGE, HOUR_LOG_LIMITS, HOUR_LOG_TIME_FORMAT_MESSAGE } from '../hour-log/hour-log.rules'
 
 type Row = {
   id: number
@@ -211,6 +211,53 @@ describe('SyncService', () => {
       const result = await service.push(5, [createOf(HOUR_LOG_LIMITS.maxHours, '44444444-4444-4444-8444-444444444444')])
 
       expect(result.results[0]).toMatchObject({ status: 'applied' })
+    })
+  })
+
+  // Sin formato HH:mm, 'abc' y 'def' producen NaN al convertir a minutos y la
+  // comparación de orden da false: el registro se aplicaba con horas inválidas.
+  describe('push rechaza horas con formato inválido (HH:mm)', () => {
+    const malformed = [
+      ['abc', 'def'],
+      ['8:00', '12:00'],
+      ['08:00', '25:00'],
+      ['08:00', ''],
+    ] as const
+
+    it.each(malformed)('no crea el registro cuando las horas son (%s, %s)', async (startTime, endTime) => {
+      prisma.placement.findUnique.mockResolvedValue({ id: 1, studentId: 5 })
+
+      const result = await service.push(5, [
+        {
+          clientOpId: '55555555-5555-4555-8555-555555555555',
+          entity: 'hourLog',
+          op: 'create',
+          baseVersion: null,
+          payload: { placementId: 1, date: '2026-04-02', startTime, endTime, hours: 4, activity: 'Soporte' },
+        },
+      ])
+
+      expect(result.results[0]).toMatchObject({ status: 'rejected', reason: HOUR_LOG_TIME_FORMAT_MESSAGE })
+      expect(prisma.hourLog.create).not.toHaveBeenCalled()
+    })
+
+    it.each(malformed)('no actualiza el registro cuando las horas son (%s, %s)', async (startTime, endTime) => {
+      prisma.hourLog.findUnique.mockResolvedValue({
+        id: 42, status: 'SUBMITTED', version: 3, placement: { id: 1, studentId: 5, tutorId: 9 },
+      })
+
+      const result = await service.push(5, [
+        {
+          clientOpId: '66666666-6666-4666-8666-666666666666',
+          entity: 'hourLog',
+          op: 'update',
+          baseVersion: 3,
+          payload: { id: 42, date: '2026-04-02', startTime, endTime, hours: 4, activity: 'Soporte' },
+        },
+      ])
+
+      expect(result.results[0]).toMatchObject({ status: 'rejected', reason: HOUR_LOG_TIME_FORMAT_MESSAGE })
+      expect(prisma.hourLog.update).not.toHaveBeenCalled()
     })
   })
 
