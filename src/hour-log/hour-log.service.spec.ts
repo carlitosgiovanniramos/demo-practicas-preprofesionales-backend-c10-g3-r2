@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { HourLogService } from './hour-log.service'
+import { HOUR_LOG_HOURS_MESSAGE, HOUR_LOG_LIMITS } from './hour-log.rules'
 
 const prisma = {
   hourLog: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn(), aggregate: vi.fn() },
@@ -37,6 +38,38 @@ describe('HourLogService', () => {
         5,
       ),
     ).rejects.toThrow(BadRequestException)
+  })
+
+  it('accepts exactly the shared maximum of hours', async () => {
+    prisma.placement.findUnique.mockResolvedValue({ id: 1, studentId: 5, tutorId: 7, status: 'ACTIVE' })
+    prisma.hourLog.create.mockImplementation(({ data }) => Promise.resolve({ id: 99, ...data }))
+
+    const result = await service.create(
+      { placementId: 1, date: new Date('2026-04-01'), startTime: '08:00', endTime: '16:00', hours: HOUR_LOG_LIMITS.maxHours, activity: 'Jornada completa de soporte' },
+      5,
+    )
+
+    expect(result.hours).toBe(HOUR_LOG_LIMITS.maxHours)
+  })
+
+  it('rejects 9 hours with the shared message (D-06: the service used to allow up to 10)', async () => {
+    prisma.placement.findUnique.mockResolvedValue({ id: 1, studentId: 5, tutorId: 7, status: 'ACTIVE' })
+
+    await expect(
+      service.create(
+        { placementId: 1, date: new Date('2026-04-01'), startTime: '08:00', endTime: '17:00', hours: 9, activity: 'Jornada larga de soporte' },
+        5,
+      ),
+    ).rejects.toThrow(HOUR_LOG_HOURS_MESSAGE)
+    expect(prisma.hourLog.create).not.toHaveBeenCalled()
+  })
+
+  it('export rejects a stored record above the shared limit with the same message', async () => {
+    prisma.hourLog.findMany.mockResolvedValue([
+      { id: 1, date: new Date('2026-04-01'), startTime: '08:00', endTime: '17:00', hours: 9, activity: 'Soporte', status: 'APPROVED', reviewedById: 7 },
+    ])
+
+    await expect(service.exportRows(1)).rejects.toThrow(HOUR_LOG_HOURS_MESSAGE)
   })
 
   it.each(['APPROVED', 'REJECTED'] as const)('rejects a foreign tutor reviewing a submitted log as %s without updating it', async (status) => {
