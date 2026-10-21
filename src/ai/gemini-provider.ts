@@ -3,8 +3,10 @@ import { AiUnavailableError, type AiTextProvider } from './ai-provider'
 const DEFAULT_MODEL = 'gemini-2.5-flash-lite'
 const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models'
 const TIMEOUT_MS = 15_000
-// Las plantillas piden textos cortos (≈100 palabras). El límite ya cubre eso sin razonamiento.
-const MAX_OUTPUT_TOKENS = 400
+// Techo, no cargo: solo se cobran los tokens generados. El razonamiento del modelo consume parte
+// de este presupuesto (observado: ~517 tokens de razonamiento con 13 de salida), así que hay que
+// dejar margen para que el texto alcance a completarse.
+const MAX_OUTPUT_TOKENS = 2048
 
 /**
  * Configuración de generación por familia de modelo. Los modelos con razonamiento consumen el

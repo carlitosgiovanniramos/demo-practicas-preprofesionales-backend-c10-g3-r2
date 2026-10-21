@@ -6,7 +6,7 @@ describe('generationConfigFor', () => {
   it('apaga el razonamiento en la familia 2.5 y limita la salida', () => {
     expect(generationConfigFor('gemini-2.5-flash-lite')).toEqual({
       temperature: 0.3,
-      maxOutputTokens: 400,
+      maxOutputTokens: 2048,
       thinkingConfig: { thinkingBudget: 0 },
     })
   })
@@ -16,7 +16,7 @@ describe('generationConfigFor', () => {
   })
 
   it('no agrega razonamiento a modelos desconocidos', () => {
-    expect(generationConfigFor('otro-modelo')).toEqual({ temperature: 0.3, maxOutputTokens: 400 })
+    expect(generationConfigFor('otro-modelo')).toEqual({ temperature: 0.3, maxOutputTokens: 2048 })
   })
 })
 
