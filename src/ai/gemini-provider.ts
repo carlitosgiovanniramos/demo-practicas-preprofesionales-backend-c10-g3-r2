@@ -25,6 +25,7 @@ interface GenerationConfig {
 
 interface GeminiResponse {
   candidates?: { content?: { parts?: { text?: string }[] }; finishReason?: string }[]
+  usageMetadata?: { candidatesTokenCount?: number; thoughtsTokenCount?: number }
 }
 
 /** Cliente REST mínimo de Gemini (sin SDK): una llamada `generateContent` por prompt. */
@@ -55,7 +56,12 @@ export class GeminiTextProvider implements AiTextProvider {
     const body = (await response.json()) as GeminiResponse
     const candidate = body.candidates?.[0]
     // Un texto cortado por límite de tokens no es una respuesta válida: se trata como fallo.
-    if (candidate?.finishReason === 'MAX_TOKENS') throw new AiUnavailableError('la respuesta de Gemini quedó incompleta')
+    if (candidate?.finishReason === 'MAX_TOKENS') {
+      const usage = body.usageMetadata ?? {}
+      throw new AiUnavailableError(
+        `la respuesta de Gemini quedó incompleta (salida=${usage.candidatesTokenCount ?? '?'}, razonamiento=${usage.thoughtsTokenCount ?? '?'}, límite=${MAX_OUTPUT_TOKENS})`,
+      )
+    }
     const text = candidate?.content?.parts?.map((p) => p.text ?? '').join('').trim()
     if (!text) throw new AiUnavailableError('Gemini no devolvió texto')
     return text
