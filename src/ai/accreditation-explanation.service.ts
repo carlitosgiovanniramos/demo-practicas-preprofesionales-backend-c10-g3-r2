@@ -1,5 +1,5 @@
 import { Inject, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common'
-import { AccreditationService } from '../placement/accreditation.service'
+import { AccreditationService, type AccreditationReport } from '../placement/accreditation.service'
 import type { AccreditationResult } from '../placement/accreditation'
 import { AI_TEXT_PROVIDER, AiUnavailableError, type AiTextProvider } from './ai-provider'
 import { buildAccreditationPrompt } from './accreditation-explanation'
@@ -27,7 +27,7 @@ export class AccreditationExplanationService {
     return this.toExplanation(result, period)
   }
 
-  private async toExplanation(result: AccreditationResult, period: string): Promise<AccreditationExplanation> {
+  private async toExplanation(result: AccreditationReport, period: string): Promise<AccreditationExplanation> {
     try {
       const explanation = await this.provider.generateText(buildAccreditationPrompt(result))
       return {

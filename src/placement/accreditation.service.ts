@@ -3,11 +3,18 @@ import { DocumentKind, DocumentStatus, HourLogStatus } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import { type AccreditationResult, calculateAccreditationStatus } from './accreditation'
 
+/** Resultado de la regla más las cifras de horas con las que se calculó (aditivo al contrato). */
+export type AccreditationReport = AccreditationResult & {
+  requiredHours: number
+  approvedHours: number
+  pendingHours: number
+}
+
 @Injectable()
 export class AccreditationService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async reportForPeriod(period: string): Promise<AccreditationResult[]> {
+  async reportForPeriod(period: string): Promise<AccreditationReport[]> {
     const [year, term] = period.split('-')
     const from = new Date(Number(year), term === '1' ? 0 : 6, 1)
     const to = new Date(Number(year), term === '1' ? 6 : 12, 1)
@@ -19,7 +26,7 @@ export class AccreditationService {
       include: { student: { select: { fullName: true } }, documents: true, evaluations: true },
     })
 
-    const results: AccreditationResult[] = []
+    const results: AccreditationReport[] = []
     for (const placement of placements) {
       const approved = await this.prisma.hourLog.aggregate({
         where: { placementId: placement.id, status: HourLogStatus.APPROVED, deletedAt: null },
@@ -40,13 +47,15 @@ export class AccreditationService {
         return (scores.technical + scores.communication + scores.punctuality) / 3
       }
 
-      results.push(
-        calculateAccreditationStatus({
+      const approvedHours = approved._sum.hours ?? 0
+      const pendingHours = pending._sum.hours ?? 0
+      results.push({
+        ...calculateAccreditationStatus({
           placementId: placement.id,
           studentName: placement.student.fullName,
           requiredHours: placement.requiredHours,
-          approvedHours: approved._sum.hours ?? 0,
-          pendingHours: pending._sum.hours ?? 0,
+          approvedHours,
+          pendingHours,
           hasAgreement: validated(DocumentKind.AGREEMENT),
           hasInsurance: validated(DocumentKind.INSURANCE),
           hasFinalReport: validated(DocumentKind.REPORT),
@@ -54,7 +63,10 @@ export class AccreditationService {
           companyEvaluationScore: scoreOf('COMPANY'),
           placementStatus: placement.status,
         }),
-      )
+        requiredHours: placement.requiredHours,
+        approvedHours,
+        pendingHours,
+      })
     }
     return results
   }

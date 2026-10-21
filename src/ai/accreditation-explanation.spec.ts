@@ -1,19 +1,22 @@
 import { NotFoundException, ServiceUnavailableException } from '@nestjs/common'
 import { describe, expect, it, vi } from 'vitest'
-import type { AccreditationResult } from '../placement/accreditation'
+import type { AccreditationReport } from '../placement/accreditation.service'
 import { AiUnavailableError, type AiTextProvider } from './ai-provider'
 import { buildAccreditationPrompt } from './accreditation-explanation'
 import { AccreditationExplanationService } from './accreditation-explanation.service'
 
-const result = (placementId: number, level: AccreditationResult['level'] = 'PENDIENTE'): AccreditationResult => ({
+const result = (placementId: number, level: AccreditationReport['level'] = 'PENDIENTE'): AccreditationReport => ({
   placementId,
   studentName: `Estudiante ${placementId}`,
   level,
   reasons: ['falta informe final'],
   completionPercentage: 80,
+  requiredHours: 240,
+  approvedHours: 192,
+  pendingHours: 12,
 })
 
-function build(results: AccreditationResult[], generateText = vi.fn(async () => 'Explicación')) {
+function build(results: AccreditationReport[], generateText = vi.fn(async () => 'Explicación')) {
   const reportForPeriod = vi.fn(async () => results)
   const service = new AccreditationExplanationService(
     { reportForPeriod } as never,
@@ -23,11 +26,22 @@ function build(results: AccreditationResult[], generateText = vi.fn(async () => 
 }
 
 describe('buildAccreditationPrompt', () => {
-  it('pasa el nivel y los motivos tal cual y prohíbe cambiarlos', () => {
+  it('calcula las horas faltantes en código, no las deja al modelo', () => {
+    const prompt = buildAccreditationPrompt(result(1))
+    expect(prompt).toContain('"horasFaltantesParaCompletar":48')
+    expect(prompt).toContain('"porcentajeAvance":80')
+    expect(prompt).toContain('"horasPendientesDeRevision":12')
+  })
+
+  it('pide interpretar los motivos en vez de repetirlos', () => {
     const prompt = buildAccreditationPrompt(result(1, 'NO_ACREDITADO'))
+    expect(prompt).toContain('No repitas el nivel')
     expect(prompt).toContain('"nivel":"NO_ACREDITADO"')
-    expect(prompt).toContain('falta informe final')
-    expect(prompt).toContain('no los cambies')
+  })
+
+  it('no muestra horas faltantes negativas cuando ya cumple', () => {
+    const prompt = buildAccreditationPrompt({ ...result(1, 'ACREDITADO'), approvedHours: 260 })
+    expect(prompt).toContain('"horasFaltantesParaCompletar":0')
   })
 })
 

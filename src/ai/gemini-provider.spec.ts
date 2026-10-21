@@ -46,6 +46,18 @@ describe('GeminiTextProvider', () => {
     await expect(provider.generateText('x')).rejects.toThrow(AiUnavailableError)
   })
 
+  it('no devuelve un texto cortado por límite de tokens', async () => {
+    const fetchFn = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({ candidates: [{ content: { parts: [{ text: 'con un porcentaje de' }] }, finishReason: 'MAX_TOKENS' }] }),
+          { status: 200 },
+        ),
+    )
+    const provider = new GeminiTextProvider('k', undefined, fetchFn as unknown as typeof fetch)
+    await expect(provider.generateText('x')).rejects.toThrow('quedó incompleta')
+  })
+
   it('lanza AiUnavailableError si la respuesta no trae texto', async () => {
     const fetchFn = vi.fn(async () => new Response(JSON.stringify({ candidates: [] }), { status: 200 }))
     const provider = new GeminiTextProvider('k', undefined, fetchFn as unknown as typeof fetch)
