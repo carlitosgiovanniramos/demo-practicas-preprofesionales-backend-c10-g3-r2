@@ -6,6 +6,6 @@ import { PlacementService } from './placement.service'
 @Module({
   controllers: [PlacementController],
   providers: [PlacementService, AccreditationService],
-  exports: [PlacementService],
+  exports: [PlacementService, AccreditationService],
 })
 export class PlacementModule {}
