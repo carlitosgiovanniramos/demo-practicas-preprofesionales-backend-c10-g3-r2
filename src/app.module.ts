@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common'
+import { AiModule } from './ai/ai.module'
 import { ApplicationModule } from './application/application.module'
 import { AuthModule } from './auth/auth.module'
 import { CompanyModule } from './company/company.module'
@@ -20,6 +21,7 @@ import { SyncModule } from './sync/sync.module'
     HourLogModule,
     EvaluationModule,
     SyncModule,
+    AiModule,
   ],
 })
 export class AppModule {}
