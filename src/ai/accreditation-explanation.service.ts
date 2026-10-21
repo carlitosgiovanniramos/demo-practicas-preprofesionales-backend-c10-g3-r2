@@ -12,15 +12,6 @@ export interface AccreditationExplanation {
   explanation: string
 }
 
-export interface SimulatedBatchResult {
-  simulated: true
-  period: string
-  total: number
-  explained: number
-  failed: number
-  items: AccreditationExplanation[]
-}
-
 @Injectable()
 export class AccreditationExplanationService {
   constructor(
@@ -34,24 +25,6 @@ export class AccreditationExplanationService {
     const result = results.find((r) => r.placementId === placementId)
     if (!result) throw new NotFoundException('placement no encontrado en ese periodo')
     return this.toExplanation(result, period)
-  }
-
-  /**
-   * Lote simulado: explica todos los placements del periodo, uno por uno.
-   * Un fallo puntual no detiene el lote; se cuenta en `failed`.
-   */
-  async simulatedBatch(period: string): Promise<SimulatedBatchResult> {
-    const results = await this.accreditation.reportForPeriod(period)
-    const items: AccreditationExplanation[] = []
-    let failed = 0
-    for (const result of results) {
-      try {
-        items.push(await this.toExplanation(result, period))
-      } catch {
-        failed += 1
-      }
-    }
-    return { simulated: true, period, total: results.length, explained: items.length, failed, items }
   }
 
   private async toExplanation(result: AccreditationResult, period: string): Promise<AccreditationExplanation> {
