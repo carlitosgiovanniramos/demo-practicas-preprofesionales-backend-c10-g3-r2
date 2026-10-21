@@ -17,4 +17,5 @@ T3 (S3) accreditation explanation, manual per placement | route: inline | status
 ## Log
 L1 Original request (user, verbatim): "haslo y trata de aprovechar la ventana que hay para las lineas maximas para cada pr encadenado porque esta implementacion si sera medio grande"
 L2 Product decision: privacy not a blocker (example data, prototype for sale). Use the free tier.
+L4 Real Gemini check pending: no GEMINI_API_KEY in environment or .env at time of work. Unit tests mock fetch; run a manual call per endpoint once the key is set.
 L3 User correction (verbatim): "pero te dije que dejes impleentada la parte de menor coste y que sea manual por aprte del cliente para tenerlo funcional con la api de gemini". Effect: S4 batch removed; only manual per-placement actions stay.
