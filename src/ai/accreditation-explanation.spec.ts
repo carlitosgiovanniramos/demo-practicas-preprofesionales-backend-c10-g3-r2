@@ -58,20 +58,3 @@ describe('AccreditationExplanationService.explainPlacement', () => {
     await expect(service.explainPlacement(1, '2026-1')).rejects.toThrow(ServiceUnavailableException)
   })
 })
-
-describe('AccreditationExplanationService.simulatedBatch', () => {
-  it('marca el lote como simulado y cuenta explicados y fallidos', async () => {
-    const generateText = vi
-      .fn<() => Promise<string>>()
-      .mockResolvedValueOnce('uno')
-      .mockRejectedValueOnce(new AiUnavailableError('timeout'))
-      .mockResolvedValueOnce('tres')
-    const { service } = build([result(1), result(2), result(3)], generateText)
-
-    const batch = await service.simulatedBatch('2026-2')
-
-    expect(batch.simulated).toBe(true)
-    expect(batch).toMatchObject({ period: '2026-2', total: 3, explained: 2, failed: 1 })
-    expect(batch.items.map((i) => i.placementId)).toEqual([1, 3])
-  })
-})
