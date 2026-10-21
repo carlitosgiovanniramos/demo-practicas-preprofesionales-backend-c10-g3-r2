@@ -1,27 +1,21 @@
 import type { AccreditationReport } from '../placement/accreditation.service'
 
 /**
- * Prompt del explicador. El nivel y los motivos vienen de la regla determinista. El modelo no los
- * repite (ya se ven en la fila): los interpreta y dice qué acción los resuelve, con las cifras
- * calculadas aquí, no por el modelo.
+ * Plantilla fija del explicador. El nivel y los motivos vienen de la regla determinista, y las
+ * cifras se calculan aquí, no por el modelo. El modelo rellena la acción; no repite lo que ya se ve.
  */
 export function buildAccreditationPrompt(report: AccreditationReport): string {
   const facts = {
     nivel: report.level,
-    motivos: report.reasons,
     porcentajeAvance: report.completionPercentage,
-    horasRequeridas: report.requiredHours,
-    horasAprobadas: report.approvedHours,
     horasFaltantesParaCompletar: Math.max(0, report.requiredHours - report.approvedHours),
     horasPendientesDeRevision: report.pendingHours,
+    motivos: report.reasons,
   }
   return [
-    'Escribe en español, para un coordinador académico, una explicación de 2 o 3 frases sobre qué le falta a este estudiante para acreditar y qué acción lo resuelve.',
-    'No repitas el nivel ni copies la lista de motivos: interprétalos y di qué hacer con ellos.',
-    'Incluye el porcentaje de avance y las horas faltantes tal como aparecen en los datos. No hagas cálculos nuevos.',
-    'Si hay horas pendientes de revisión, indica que el tutor puede aprobarlas. No cambies el nivel ni prometas la acreditación. Máximo 60 palabras.',
-    '',
-    'Datos (JSON):',
-    JSON.stringify(facts),
+    'Rol: asesor académico. Idioma: español. Máximo 3 frases.',
+    'Plantilla: "Le faltan {horasFaltantesParaCompletar} h ({porcentajeAvance}% de avance). {acción concreta según los motivos}. {si horasPendientesDeRevision > 0: El tutor puede aprobar {horasPendientesDeRevision} h pendientes.}"',
+    'Reglas: no repitas el nivel ni los motivos; no cambies el nivel; no hagas cálculos; si faltan 0 h, omite la primera frase.',
+    `Datos: ${JSON.stringify(facts)}`,
   ].join('\n')
 }

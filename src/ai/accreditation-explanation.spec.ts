@@ -35,7 +35,7 @@ describe('buildAccreditationPrompt', () => {
 
   it('pide interpretar los motivos en vez de repetirlos', () => {
     const prompt = buildAccreditationPrompt(result(1, 'NO_ACREDITADO'))
-    expect(prompt).toContain('No repitas el nivel')
+    expect(prompt).toContain('no repitas el nivel')
     expect(prompt).toContain('"nivel":"NO_ACREDITADO"')
   })
 

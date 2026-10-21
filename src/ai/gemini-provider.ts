@@ -3,6 +3,25 @@ import { AiUnavailableError, type AiTextProvider } from './ai-provider'
 const DEFAULT_MODEL = 'gemini-2.5-flash-lite'
 const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models'
 const TIMEOUT_MS = 15_000
+// Las plantillas piden textos cortos (≈100 palabras). El límite ya cubre eso sin razonamiento.
+const MAX_OUTPUT_TOKENS = 400
+
+/**
+ * Configuración de generación por familia de modelo. Los modelos con razonamiento consumen el
+ * presupuesto de salida (y se cobran), así que se desactiva o se reduce según la familia.
+ */
+export function generationConfigFor(model: string): GenerationConfig {
+  const base: GenerationConfig = { temperature: 0.3, maxOutputTokens: MAX_OUTPUT_TOKENS }
+  if (model.startsWith('gemini-2.5')) return { ...base, thinkingConfig: { thinkingBudget: 0 } }
+  if (model.startsWith('gemini-3')) return { ...base, thinkingConfig: { thinkingLevel: 'low' } }
+  return base
+}
+
+interface GenerationConfig {
+  temperature: number
+  maxOutputTokens: number
+  thinkingConfig?: { thinkingBudget?: number; thinkingLevel?: string }
+}
 
 interface GeminiResponse {
   candidates?: { content?: { parts?: { text?: string }[] }; finishReason?: string }[]
@@ -24,7 +43,7 @@ export class GeminiTextProvider implements AiTextProvider {
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': this.apiKey },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.3, maxOutputTokens: 1024 },
+          generationConfig: generationConfigFor(this.model),
         }),
         signal: AbortSignal.timeout(TIMEOUT_MS),
       })

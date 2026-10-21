@@ -20,23 +20,19 @@ export function weekRange(weekStart: string): { from: Date; to: Date } | null {
 }
 
 /**
- * Prompt del borrador semanal. Los datos van como JSON para que el modelo no los mezcle con
- * instrucciones; la regla de no inventar actividades es explícita.
+ * Plantilla fija del borrador semanal. Solo viajan fecha, horas y actividad (sin inicio ni fin,
+ * que no aportan al texto), y la salida tiene forma fija para acotar tokens.
  */
 export function buildWeeklySummaryPrompt(entries: WeeklyEntry[]): string {
   const data = entries.map((e) => ({
     fecha: e.date.toISOString().slice(0, 10),
-    inicio: e.startTime,
-    fin: e.endTime,
     horas: e.hours,
     actividad: e.activity,
   }))
   return [
-    'Redacta en español un borrador de informe semanal de prácticas preprofesionales.',
-    'Usa únicamente las jornadas del JSON. No inventes actividades, fechas ni horas.',
-    'Máximo 120 palabras, en primera persona, con un párrafo y el total de horas.',
-    '',
-    'Jornadas (JSON):',
-    JSON.stringify(data),
+    'Rol: redactor de informes de prácticas. Idioma: español. Primera persona, un párrafo de máximo 90 palabras.',
+    'Plantilla: "Esta semana registré {total} h en {n} jornadas: {actividades resumidas}. Total: {total} h."',
+    'Reglas: usa solo las jornadas del JSON. No inventes actividades ni horas.',
+    `Jornadas: ${JSON.stringify(data)}`,
   ].join('\n')
 }

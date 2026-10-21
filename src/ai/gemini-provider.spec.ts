@@ -1,6 +1,24 @@
 import { describe, expect, it, vi } from 'vitest'
 import { AiUnavailableError } from './ai-provider'
-import { GeminiTextProvider } from './gemini-provider'
+import { GeminiTextProvider, generationConfigFor } from './gemini-provider'
+
+describe('generationConfigFor', () => {
+  it('apaga el razonamiento en la familia 2.5 y limita la salida', () => {
+    expect(generationConfigFor('gemini-2.5-flash-lite')).toEqual({
+      temperature: 0.3,
+      maxOutputTokens: 400,
+      thinkingConfig: { thinkingBudget: 0 },
+    })
+  })
+
+  it('usa thinkingLevel bajo en la familia 3', () => {
+    expect(generationConfigFor('gemini-3-flash-preview').thinkingConfig).toEqual({ thinkingLevel: 'low' })
+  })
+
+  it('no agrega razonamiento a modelos desconocidos', () => {
+    expect(generationConfigFor('otro-modelo')).toEqual({ temperature: 0.3, maxOutputTokens: 400 })
+  })
+})
 
 const okResponse = (text: string) =>
   new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text }] } }] }), { status: 200 })
