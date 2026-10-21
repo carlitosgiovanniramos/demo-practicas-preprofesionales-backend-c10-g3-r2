@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common'
+import { Injectable, Logger } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import {
@@ -11,7 +11,7 @@ import {
 import { buildKeysetWhere } from './keyset'
 import type { SyncOperationInput, SyncOperationResult } from './dto/push.dto'
 import { hourLogRangeError } from '../hour-log/hour-log.rules'
-import { normalizeHourLogDate } from '../hour-log/hour-log.date'
+import { HourLogDateError, normalizeHourLogDate } from '../hour-log/hour-log.date'
 
 // D-06: el push aplica la misma regla de horas que el DTO y el servicio.
 function hourRangeReason(payload: Record<string, unknown>): string | null {
@@ -214,7 +214,9 @@ export class SyncService {
   private async applyAndRecord(userId: number, op: SyncOperationInput): Promise<SyncOperationResult> {
     return this.prisma.$transaction(async (tx) => {
       const result = await this.applyOperation(tx, userId, op).catch((err: unknown): SyncOperationResult => {
-        if (!(err instanceof BadRequestException)) throw err
+        // Solo el rechazo de fecha es de negocio y se persiste; otros BadRequest
+        // son infraestructura y siguen el camino no cacheado de recoverFromFailedApply.
+        if (!(err instanceof HourLogDateError)) throw err
         return { clientOpId: op.clientOpId, status: 'rejected', server: null, reason: err.message }
       })
       await tx.syncOperation.create({

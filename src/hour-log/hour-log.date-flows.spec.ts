@@ -1,9 +1,10 @@
 import 'reflect-metadata'
-import { ValidationPipe } from '@nestjs/common'
+import { BadRequestException, ValidationPipe } from '@nestjs/common'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SyncOperationInput } from '../sync/dto/push.dto'
 import { SyncService } from '../sync/sync.service'
 import { CreateHourLogDto } from './dto/create-hour-log.dto'
+import { CALENDAR_DATE_MESSAGE } from './hour-log.date'
 import { HourLogService } from './hour-log.service'
 
 const placement = {
@@ -124,6 +125,83 @@ describe('fecha: HTTP, sync y compatibilidad', () => {
       expect((await hours.weeklySummary(1))[0].week).toBe('2026-W10')
       expect(prisma.hourLog.update).not.toHaveBeenCalled()
       expect(prisma.hourLog.create).not.toHaveBeenCalled()
+    },
+  )
+})
+
+describe('outbox con fechas no canónicas (sync rechaza sin escribir ni reinterpretar)', () => {
+  beforeEach(() => {
+    vi.stubEnv('TZ', 'America/Guayaquil')
+  })
+
+  // Timestamps que una versión previa del cliente pudo dejar en el outbox: no son el ISO de
+  // medianoche UTC, así que se rechazan en vez de adivinar el día.
+  it.each(['2026-04-01T05:00:00.000Z', '2026-04-01T00:00:00+00:00', '2026-04-01T00:00:01.000Z'])(
+    'create con %s se rechaza, se persiste el rechazo y el reintento devuelve el mismo motivo', async (date) => {
+      const first = await sync.push(5, [op(date)])
+      expect(first.results[0]).toMatchObject({ status: 'rejected', server: null, reason: CALENDAR_DATE_MESSAGE })
+      expect(prisma.hourLog.create).not.toHaveBeenCalled()
+      expect(prisma.syncOperation.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          clientOpId: '11111111-1111-4111-8111-111111111111',
+          userId: 5,
+          response: expect.objectContaining({ status: 'rejected', reason: CALENDAR_DATE_MESSAGE }),
+        }),
+      })
+
+      prisma.syncOperation.findUnique.mockResolvedValue({ response: first.results[0] })
+      const retry = await sync.push(5, [op(date)])
+      expect(retry.results[0]).toEqual(first.results[0])
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1)
+    },
+  )
+
+  it.each(['2026-04-01T05:00:00.000Z', '2026-04-01T00:00:00+00:00'])(
+    'update con %s se rechaza y no modifica la fila histórica', async (date) => {
+      const result = await sync.push(5, [op(date, 'update')])
+      expect(result.results[0]).toMatchObject({ status: 'rejected', server: null, reason: CALENDAR_DATE_MESSAGE })
+      expect(prisma.hourLog.update).not.toHaveBeenCalled()
+    },
+  )
+
+  it('la misma edición con YYYY-MM-DD sí se aplica tras el rechazo', async () => {
+    expect((await sync.push(5, [op('2026-04-01T05:00:00.000Z', 'update')])).results[0].status).toBe('rejected')
+    expect((await sync.push(5, [{ ...op('2026-04-01', 'update'), clientOpId: '22222222-2222-4222-8222-222222222222' }])).results[0].status).toBe('applied')
+    expect(prisma.hourLog.update).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('fallos de aplicación que no son rechazos de fecha', () => {
+  beforeEach(() => {
+    vi.stubEnv('TZ', 'America/Guayaquil')
+  })
+
+  it('un BadRequestException ajeno a la fecha no se persiste como rechazo y el reintento aplica', async () => {
+    prisma.hourLog.create.mockRejectedValueOnce(new BadRequestException('error ajeno a la fecha'))
+
+    const first = await sync.push(5, [op('2026-04-01')])
+    expect(first.results[0]).toMatchObject({ status: 'rejected' })
+    expect(prisma.syncOperation.create).not.toHaveBeenCalled()
+
+    const second = await sync.push(5, [op('2026-04-01')])
+    expect(second.results[0]).toMatchObject({ status: 'applied' })
+    expect(prisma.hourLog.create).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('semana ISO del resumen semanal sin depender de la zona del proceso', () => {
+  it.each(['America/Los_Angeles', 'America/Guayaquil', 'Asia/Tokyo', 'UTC'])(
+    'TZ=%s agrupa domingo 29 en W13 y lunes 30 en W14', async (zone) => {
+      vi.stubEnv('TZ', zone)
+      prisma.hourLog.findMany.mockResolvedValue([
+        { id: 1, date: new Date('2026-03-29T00:00:00.000Z'), hours: 2, status: 'APPROVED' },
+        { id: 2, date: new Date('2026-03-30T00:00:00.000Z'), hours: 3, status: 'APPROVED' },
+      ])
+      const weeks = await hours.weeklySummary(1)
+      expect(weeks).toEqual([
+        expect.objectContaining({ week: '2026-W13', approvedHours: 2 }),
+        expect.objectContaining({ week: '2026-W14', approvedHours: 3 }),
+      ])
     },
   )
 })

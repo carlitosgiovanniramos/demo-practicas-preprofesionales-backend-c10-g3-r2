@@ -1,5 +1,12 @@
 import { BadRequestException } from '@nestjs/common'
 
+/**
+ * Rechazo de negocio por fecha. Es determinista: sync lo persiste como `rejected`
+ * (un reintento devuelve el mismo motivo) y cualquier otro BadRequestException
+ * se trata como fallo de infraestructura y no se cachea.
+ */
+export class HourLogDateError extends BadRequestException {}
+
 export const CALENDAR_DATE_MESSAGE = 'La fecha debe ser un día calendario válido en formato YYYY-MM-DD'
 const CALENDAR_DATE_INPUT = /^(\d{4}-\d{2}-\d{2})(?:T00:00:00(?:\.000)?Z)?$/
 
@@ -40,18 +47,18 @@ export function normalizeHourLogDate(
   now = new Date(),
 ): Date {
   const date = parseCalendarDate(value)
-  if (!date) throw new BadRequestException(CALENDAR_DATE_MESSAGE)
+  if (!date) throw new HourLogDateError(CALENDAR_DATE_MESSAGE)
   // El periodo usa el mismo convenio de día calendario almacenado en UTC.
   const day = date.toISOString().slice(0, 10)
   const start = placement.startDate.toISOString().slice(0, 10)
   const end = placement.endDate.toISOString().slice(0, 10)
   if (day < start || day > end) {
-    throw new BadRequestException(`La fecha debe estar entre ${start} y ${end} (inclusive)`)
+    throw new HourLogDateError(`La fecha debe estar entre ${start} y ${end} (inclusive)`)
   }
   const zone = institutionTimeZone()
   const today = institutionToday(now, zone)
   if (day > today) {
-    throw new BadRequestException(`No se pueden registrar horas con fecha futura; hoy es ${today} en ${zone}`)
+    throw new HourLogDateError(`No se pueden registrar horas con fecha futura; hoy es ${today} en ${zone}`)
   }
   return date
 }
