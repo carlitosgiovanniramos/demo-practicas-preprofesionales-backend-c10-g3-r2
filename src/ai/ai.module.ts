@@ -1,6 +1,9 @@
 import { Module } from '@nestjs/common'
+import { HourLogModule } from '../hour-log/hour-log.module'
 import { AI_TEXT_PROVIDER, AiUnavailableError, type AiTextProvider } from './ai-provider'
+import { AiController } from './ai.controller'
 import { GeminiTextProvider } from './gemini-provider'
+import { WeeklySummaryService } from './weekly-summary.service'
 
 /** Sin GEMINI_API_KEY el módulo arranca igual, pero cada llamada responde 503 (nunca texto falso). */
 const unconfiguredProvider: AiTextProvider = {
@@ -10,6 +13,8 @@ const unconfiguredProvider: AiTextProvider = {
 }
 
 @Module({
+  imports: [HourLogModule],
+  controllers: [AiController],
   providers: [
     {
       provide: AI_TEXT_PROVIDER,
@@ -19,6 +24,7 @@ const unconfiguredProvider: AiTextProvider = {
         return new GeminiTextProvider(apiKey, process.env.GEMINI_MODEL || undefined)
       },
     },
+    WeeklySummaryService,
   ],
   exports: [AI_TEXT_PROVIDER],
 })
