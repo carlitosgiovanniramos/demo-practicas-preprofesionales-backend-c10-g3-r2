@@ -18,7 +18,9 @@ export class ActionPlanService {
   /** Lo ven el coordinador, el tutor y el estudiante dueño del placement. */
   async get(placementId: number, userId: number, role: Role) {
     await this.hourLogs.assertPlacementAccess(placementId, userId, role)
-    return this.prisma.actionPlan.findUnique({ where: { placementId } })
+    const plan = await this.prisma.actionPlan.findUnique({ where: { placementId } })
+    // Nest responde `null` con cuerpo vacío, que el cliente no puede parsear: siempre devolvemos un objeto.
+    return plan ?? { placementId, content: null, updatedAt: null }
   }
 
   /** Crea o reemplaza el plan del placement. Solo el coordinador lo edita (lo impone el controlador). */

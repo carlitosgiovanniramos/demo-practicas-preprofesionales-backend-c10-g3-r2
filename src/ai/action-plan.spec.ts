@@ -49,9 +49,13 @@ describe('ActionPlanService', () => {
     expect(f.assertPlacementAccess).toHaveBeenCalledWith(1, 3, Role.STUDENT)
   })
 
-  it('get: devuelve null cuando el coordinador aún no creó plan', async () => {
+  it('get: devuelve un objeto sin contenido cuando aún no hay plan (nunca cuerpo vacío)', async () => {
     const f = build()
-    await expect(f.service.get(1, 9, Role.COORDINATOR)).resolves.toBeNull()
+    await expect(f.service.get(1, 9, Role.COORDINATOR)).resolves.toEqual({
+      placementId: 1,
+      content: null,
+      updatedAt: null,
+    })
   })
 
   it('save: crea o reemplaza el plan con el contenido editado', async () => {
