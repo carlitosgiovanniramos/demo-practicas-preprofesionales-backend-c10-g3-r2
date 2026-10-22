@@ -3,8 +3,10 @@ import { ValidationPipe } from '@nestjs/common'
 import { NestFactory } from '@nestjs/core'
 import { AppModule } from './app.module'
 import { HttpExceptionFilter } from './common/http-exception.filter'
+import { institutionTimeZone } from './hour-log/hour-log.date'
 
 async function bootstrap(): Promise<void> {
+  institutionTimeZone()
   const app = await NestFactory.create(AppModule)
   app.setGlobalPrefix('api')
   app.enableCors({

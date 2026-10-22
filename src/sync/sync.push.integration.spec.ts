@@ -4,6 +4,7 @@ import * as bcrypt from 'bcryptjs'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import type { SyncOperationInput } from './dto/push.dto'
 import { SyncService } from './sync.service'
+import { HourLogService } from '../hour-log/hour-log.service'
 
 // Test de integración real contra Postgres (docker-compose): reproduce D-01
 // (KNOWN_ISSUES.md) mandando el mismo clientOpId dos veces, en secuencia y en
@@ -156,6 +157,29 @@ describe.skipIf(!hasDatabase)('SyncService.push — idempotencia de clientOpId (
       payload: { placementId: targetPlacementId, date: '2026-04-02', startTime: '08:00', endTime: '12:00', hours: 4, activity },
     }
   }
+
+  it('persiste el mismo día normalizado por creación normal y sync', async () => {
+    await prisma.placement.update({ where: { id: placementId }, data: { status: 'ACTIVE' } })
+    const online = await new HourLogService(prisma as never).create({
+      placementId, date: '2026-04-02', startTime: '08:00', endTime: '12:00', hours: 4, activity: 'Fecha online',
+    }, studentId)
+    const pushed = await service.push(studentId, [createOp(crypto.randomUUID(), 'Fecha offline')])
+    expect(pushed.results[0].status).toBe('applied')
+    const offlineId = pushed.results[0].server?.id as number
+    const rows = await prisma.hourLog.findMany({ where: { id: { in: [online.id, offlineId] } } })
+    expect(rows).toHaveLength(2)
+    expect(rows.map((row) => row.date.toISOString())).toEqual([
+      '2026-04-02T00:00:00.000Z', '2026-04-02T00:00:00.000Z',
+    ])
+  })
+
+  it('rechaza una fecha fuera de periodo sin insertar una jornada', async () => {
+    const operation = createOp(crypto.randomUUID(), 'Fecha fuera de periodo')
+    operation.payload.date = '2026-02-28'
+    const pushed = await service.push(studentId, [operation])
+    expect(pushed.results[0]).toMatchObject({ status: 'rejected', reason: expect.stringContaining('2026-03-01 y 2026-07-31') })
+    expect(await prisma.hourLog.count({ where: { placementId, activity: 'Fecha fuera de periodo' } })).toBe(0)
+  })
 
   it('un reintento secuencial con el mismo clientOpId no crea una fila nueva', async () => {
     const op = createOp(crypto.randomUUID(), 'Soporte — reintento secuencial')
