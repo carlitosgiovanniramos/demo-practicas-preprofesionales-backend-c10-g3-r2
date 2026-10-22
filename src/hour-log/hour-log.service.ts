@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service'
 import type { CreateHourLogDto } from './dto/create-hour-log.dto'
 import { canAccessPlacement } from '../placement/placement-access'
 import { hourLogRangeError } from './hour-log.rules'
+import { normalizeHourLogDate } from './hour-log.date'
 
 // D-02 (deuda sembrada, documentada a propósito): este servicio es un
 // "god service". `create` valida el DTO, persiste el registro y dispara
@@ -40,11 +41,11 @@ export class HourLogService {
     const rangeError = hourLogRangeError(dto)
     if (rangeError) throw new BadRequestException(rangeError)
 
-    // La fecha del registro llega desde el cliente y se persiste tal como fue recibida.
+    const date = normalizeHourLogDate(dto.date, placement)
     const created = await this.prisma.hourLog.create({
       data: {
         placementId: dto.placementId,
-        date: dto.date,
+        date,
         startTime: dto.startTime,
         endTime: dto.endTime,
         hours: dto.hours,

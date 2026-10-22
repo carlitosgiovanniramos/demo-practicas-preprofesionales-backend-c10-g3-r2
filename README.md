@@ -38,6 +38,53 @@ máquina, cambia `POSTGRES_PORT` y `DATABASE_URL` en `.env` antes de `docker com
 | `JWT_REFRESH_TTL_DAYS` | `7` | Vida sin actividad de la sesión renovable, en días (1–365) |
 | `PORT` | `3000` | Puerto donde escucha la API |
 | `CORS_ORIGIN` | `http://localhost:5173` | Origen permitido para requests desde el navegador (frontend Vite) |
+| `INSTITUTION_TIME_ZONE` | `America/Guayaquil` | Zona IANA de la institución para validar el día actual de las jornadas; una zona inválida impide el arranque |
+
+### Fecha de las jornadas: día calendario
+
+`HourLog.date` representa el **día elegido**, no el instante en que se trabajó ni el
+reloj del teléfono. HTTP y sync (crear y editar) reciben `YYYY-MM-DD` y lo normalizan
+en el servidor como `YYYY-MM-DDT00:00:00.000Z`. Esa medianoche UTC es una codificación
+del día para conservar el esquema y la respuesta existentes; no debe convertirse a
+hora local para mostrarlo. El formulario actual ya envía `YYYY-MM-DD`.
+
+Por compatibilidad se acepta también esa codificación ISO de medianoche UTC (con o
+sin `.000`), por ejemplo al reenviar una fila recibida del servidor. Otros timestamps,
+offsets y horas sin zona se rechazan con un error de formato: convertirlos podría
+cambiar el día que quiso elegir el estudiante. El cliente debe enviar la selección
+del calendario, sin convertirla con `new Date(...).toISOString()` en su zona local.
+
+El servidor valida fechas reales (incluidos años bisiestos), el periodo inclusivo
+`Placement.startDate`–`endDate` y que el día no supere **hoy en la zona institucional**.
+El periodo también se interpreta por su día UTC almacenado. Por ejemplo, a las
+`2026-04-02T02:00:00Z`, en Guayaquil todavía es `2026-04-01`; registrar el día 2 se
+rechaza aunque el dispositivo ya esté en ese día. Una fecha fuera de periodo informa
+ambos límites. HTTP devuelve 400; sync devuelve `rejected` con el mismo motivo.
+El servidor no puede adivinar otro día pasado si el estudiante lo eligió por error.
+
+**Datos existentes y despliegue:** no hay migración ni actualización masiva de filas,
+ni cambio de esquema o de la zona del proceso/PostgreSQL. Las lecturas, el pull y el
+CSV conservan sus valores y días. **Cambio visible en el resumen semanal:** antes,
+`weeklySummary` agrupaba con la zona local del servidor; en un servidor con zona negativa
+(por ejemplo America/Guayaquil) las filas del lunes caían en la semana anterior. Ahora usa
+los componentes UTC del día, así que en servidores no UTC esas filas pueden cambiar de
+semana en informes ya generados. Ningún dato se reescribe. Los reintentos de operaciones ya
+aplicadas siguen devolviendo la respuesta guardada sin revalidar ni reescribir la fila.
+Una edición nueva sí valida la fecha; para corregir un timestamp histórico no canónico,
+el cliente debe enviar explícitamente `YYYY-MM-DD`. No se reinterpretan automáticamente
+esas horas antiguas como instantes de la zona institucional. El rollback consiste en
+revertir el código: no hay transformación de datos que deshacer. Cualquier futura
+corrección de datos históricos requerirá una migración separada con respaldo y reversión.
+
+**Outbox offline y fechas no canónicas:** una operación de sync cuya fecha no es
+`YYYY-MM-DD` ni el ISO de medianoche UTC (por ejemplo, un timestamp con hora u offset que
+quedó en un outbox creado por una versión previa del cliente) se responde como `rejected`
+con el mensaje de formato y no escribe la fila. El rechazo es determinista: un reintento con
+el mismo `clientOpId` devuelve el mismo motivo guardado en `sync_operations`. El cliente
+quita la operación de la cola y marca el registro local como `failed` con ese motivo en
+`syncNote`; el estudiante debe volver a elegir el día en el calendario y guardarlo. Solo este
+rechazo de fecha se persiste así. Otros `BadRequestException` durante la aplicación son fallos
+de infraestructura: no se cachean y el reintento vuelve a aplicar la operación.
 
 ### `JWT_SECRET`
 

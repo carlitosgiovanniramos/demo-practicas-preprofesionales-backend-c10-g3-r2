@@ -64,6 +64,8 @@ const uniqueViolation = () =>
     meta: { target: ['userId', 'clientOpId'] },
   })
 
+const period = { startDate: new Date('2026-03-01'), endDate: new Date('2026-07-31') }
+
 const prisma = {
   placement: { findMany: vi.fn(), findUnique: vi.fn() },
   hourLog: { findMany: vi.fn(), create: vi.fn(), update: vi.fn(), findUnique: vi.fn() },
@@ -168,7 +170,7 @@ describe('SyncService', () => {
   })
 
   it('applies a create operation and returns applied', async () => {
-    prisma.placement.findUnique.mockResolvedValue({ id: 1, studentId: 5 })
+    prisma.placement.findUnique.mockResolvedValue({ id: 1, studentId: 5, ...period })
     prisma.hourLog.create.mockResolvedValue({ id: 77, version: 1 })
 
     const result = await service.push(5, [
@@ -196,7 +198,7 @@ describe('SyncService', () => {
     })
 
     it('rechaza una creación con más horas que el máximo sin escribir el registro', async () => {
-      prisma.placement.findUnique.mockResolvedValue({ id: 1, studentId: 5 })
+      prisma.placement.findUnique.mockResolvedValue({ id: 1, studentId: 5, ...period })
 
       const result = await service.push(5, [createOf(HOUR_LOG_LIMITS.maxHours + 1)])
 
@@ -205,7 +207,7 @@ describe('SyncService', () => {
     })
 
     it('acepta una creación en el máximo exacto', async () => {
-      prisma.placement.findUnique.mockResolvedValue({ id: 1, studentId: 5 })
+      prisma.placement.findUnique.mockResolvedValue({ id: 1, studentId: 5, ...period })
       prisma.hourLog.create.mockResolvedValue({ id: 78, version: 1 })
 
       const result = await service.push(5, [createOf(HOUR_LOG_LIMITS.maxHours, '44444444-4444-4444-8444-444444444444')])
@@ -225,7 +227,7 @@ describe('SyncService', () => {
     ] as const
 
     it.each(malformed)('no crea el registro cuando las horas son (%s, %s)', async (startTime, endTime) => {
-      prisma.placement.findUnique.mockResolvedValue({ id: 1, studentId: 5 })
+      prisma.placement.findUnique.mockResolvedValue({ id: 1, studentId: 5, ...period })
 
       const result = await service.push(5, [
         {
@@ -243,7 +245,7 @@ describe('SyncService', () => {
 
     it.each(malformed)('no actualiza el registro cuando las horas son (%s, %s)', async (startTime, endTime) => {
       prisma.hourLog.findUnique.mockResolvedValue({
-        id: 42, status: 'SUBMITTED', version: 3, placement: { id: 1, studentId: 5, tutorId: 9 },
+        id: 42, status: 'SUBMITTED', version: 3, placement: { id: 1, studentId: 5, tutorId: 9, ...period },
       })
 
       const result = await service.push(5, [
@@ -395,7 +397,7 @@ describe('SyncService', () => {
   })
 
   it('D-01: la identidad de la operación es (userId, clientOpId), no clientOpId solo', async () => {
-    prisma.placement.findUnique.mockResolvedValue({ id: 1, studentId: 5 })
+    prisma.placement.findUnique.mockResolvedValue({ id: 1, studentId: 5, ...period })
     prisma.hourLog.create.mockResolvedValue({ id: 1, version: 1 })
 
     await service.push(5, [
@@ -416,7 +418,7 @@ describe('SyncService', () => {
   })
 
   it('D-01: dos envíos concurrentes con el mismo clientOpId devuelven la misma respuesta y aplican una sola vez', async () => {
-    prisma.placement.findUnique.mockResolvedValue({ id: 1, studentId: 5 })
+    prisma.placement.findUnique.mockResolvedValue({ id: 1, studentId: 5, ...period })
     prisma.hourLog.create.mockResolvedValue({ id: 77, version: 1 })
 
     // Simula la carrera: ninguno ve el registro antes de aplicar, ambos
@@ -450,7 +452,7 @@ describe('SyncService', () => {
   })
 
   it('un fallo de infraestructura no se cachea como rechazo permanente: el reintento vuelve a aplicar', async () => {
-    prisma.placement.findUnique.mockResolvedValue({ id: 1, studentId: 5 })
+    prisma.placement.findUnique.mockResolvedValue({ id: 1, studentId: 5, ...period })
     prisma.hourLog.create.mockResolvedValue({ id: 77, version: 1 })
 
     const op = {
@@ -509,7 +511,7 @@ describe('SyncService', () => {
       activity: 'Soporte',
       status,
       version,
-      placement: { id: 1, studentId: 5, tutorId: 9 },
+      placement: { id: 1, studentId: 5, tutorId: 9, ...period },
     })
 
     // Rama 1 del criterio: el tutor ya resolvió.
