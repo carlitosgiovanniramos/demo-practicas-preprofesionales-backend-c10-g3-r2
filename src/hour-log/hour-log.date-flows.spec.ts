@@ -5,6 +5,7 @@ import type { SyncOperationInput } from '../sync/dto/push.dto'
 import { SyncService } from '../sync/sync.service'
 import { CreateHourLogDto } from './dto/create-hour-log.dto'
 import { CALENDAR_DATE_MESSAGE } from './hour-log.date'
+import { HourLogReportService } from './hour-log-report.service'
 import { HourLogService } from './hour-log.service'
 
 const placement = {
@@ -20,6 +21,7 @@ const prisma = {
   $transaction: vi.fn(),
 }
 const hours = new HourLogService(prisma as never)
+const reports = new HourLogReportService(prisma as never)
 const sync = new SyncService(prisma as never)
 const pipe = new ValidationPipe({ whitelist: true, transform: true })
 const dto = (date: unknown) => ({ placementId: 1, date, startTime: '08:00', endTime: '12:00', hours: 4, activity: 'Soporte' })
@@ -122,7 +124,7 @@ describe('fecha: HTTP, sync y compatibilidad', () => {
       expect(await hours.listForPlacement(1)).toEqual([old])
       expect((await sync.pull(5, undefined, 200)).changes.hourLogs).toEqual([old])
       expect((await hours.exportRows(1))[1][1]).toBe('2026-03-02')
-      expect((await hours.weeklySummary(1))[0].week).toBe('2026-W10')
+      expect((await reports.weeklySummary(1))[0].week).toBe('2026-W10')
       expect(prisma.hourLog.update).not.toHaveBeenCalled()
       expect(prisma.hourLog.create).not.toHaveBeenCalled()
     },
@@ -197,7 +199,7 @@ describe('semana ISO del resumen semanal sin depender de la zona del proceso', (
         { id: 1, date: new Date('2026-03-29T00:00:00.000Z'), hours: 2, status: 'APPROVED' },
         { id: 2, date: new Date('2026-03-30T00:00:00.000Z'), hours: 3, status: 'APPROVED' },
       ])
-      const weeks = await hours.weeklySummary(1)
+      const weeks = await reports.weeklySummary(1)
       expect(weeks).toEqual([
         expect.objectContaining({ week: '2026-W13', approvedHours: 2 }),
         expect.objectContaining({ week: '2026-W14', approvedHours: 3 }),
