@@ -12,10 +12,10 @@ S6 Out of scope: no database table or cache in this iteration, no embeddings, no
 S7 Limit: default 10, min 1, max 50.
 
 ## Tasks
-T1 (S2) text normalization and TF-IDF math, pure functions | route: inline | status: done (RED observed: missing modules; GREEN 13/13)
-T2 (S1, S3, S4) RecommendationService ranking | route: inline | status: done (RED observed; GREEN 19/19)
-T3 (S1, S7) controller, module, app wiring, query DTO | route: inline | status: done (RED observed; GREEN 60/60 with src/ai)
-T4 (S5) optional MiniMax explanation for top 5 | route: inline | status: done (RED observed; GREEN, prompt/parse/service covered)
+T1 (S2) text normalization and TF-IDF math, pure functions | route: inline | status: done, commit 3270978 (RED: missing modules; GREEN 13/13)
+T2 (S1, S3, S4) RecommendationService ranking | route: inline | status: done, commit 9ed9ab0 (RED observed; GREEN 19/19)
+T3 (S1, S7) controller, module, app wiring, query DTO | route: inline | status: done, commit 9ed9ab0 (RED observed; GREEN 60/60 with src/ai)
+T4 (S5) optional MiniMax explanation for top 5 | route: inline | status: done, commit 9ed9ab0 (RED observed; GREEN, prompt/parse/service covered)
 
 Verification: full suite 269/269, eslint 0 problems, tsc --noEmit exit 0. Risk: none (additive endpoint, no migration, no change to existing contracts or guards).
 Not verified live: MiniMax explanation against the real API (no key checked in this session; see L4 of ai-resumen-acreditacion).
