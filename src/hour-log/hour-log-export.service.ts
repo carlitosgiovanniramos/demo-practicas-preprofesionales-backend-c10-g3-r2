@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
+import { hourLogRangeError } from './hour-log.rules'
 
 @Injectable()
 export class HourLogExportService {
@@ -37,12 +38,8 @@ export class HourLogExportService {
   }
 
   private validateLog(hours: number, startTime: string, endTime: string): void {
-    if (hours <= 0 || hours > 10) throw new BadRequestException('las horas deben estar entre 0 y 10')
-    const [startHour, startMinute] = startTime.split(':').map(Number)
-    const [endHour, endMinute] = endTime.split(':').map(Number)
-    if (startHour * 60 + startMinute >= endHour * 60 + endMinute) {
-      throw new BadRequestException('la hora de inicio debe ser anterior a la de fin')
-    }
+    const reason = hourLogRangeError({ hours, startTime, endTime })
+    if (reason) throw new BadRequestException(reason)
   }
 
   private escapeCsvField(value: string): string {

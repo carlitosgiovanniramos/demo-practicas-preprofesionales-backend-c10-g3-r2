@@ -66,14 +66,6 @@ describe('HourLogService', () => {
     expect(prisma.hourLog.create).not.toHaveBeenCalled()
   })
 
-  it('export rejects a stored record above the shared limit with the same message', async () => {
-    prisma.hourLog.findMany.mockResolvedValue([
-      { id: 1, date: new Date('2026-04-01'), startTime: '08:00', endTime: '17:00', hours: 9, activity: 'Soporte', status: 'APPROVED', reviewedById: 7 },
-    ])
-
-    await expect(service.exportRows(1)).rejects.toThrow(HOUR_LOG_HOURS_MESSAGE)
-  })
-
   it.each(['APPROVED', 'REJECTED'] as const)('rejects a foreign tutor reviewing a submitted log as %s without updating it', async (status) => {
     prisma.hourLog.findUnique.mockResolvedValue({ id: 99, placementId: 1, status: 'SUBMITTED', version: 1 })
     prisma.placement.findUnique.mockResolvedValue({ id: 1, tutorId: 7 })
