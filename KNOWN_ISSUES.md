@@ -26,13 +26,12 @@ Sigue pendiente el lado `src/offline/sync/push.ts` del front (repo aparte).
 Workaround actual (ya no debería hacer falta para hour logs): el coordinador borra los
 duplicados a mano.
 
-## D-02 · `HourLogService` se nos fue de las manos
+## D-02 · `HourLogService` se nos fue de las manos — RESUELTO
 
-`src/hour-log/hour-log.service.ts`
-
-Empezó siendo el CRUD de horas y terminó haciendo validación, persistencia, notificación al
-tutor y agregación de reportes. Pasa las 300 líneas. Cada vez que hay que tocar algo ahí, hay
-que leerlo entero. Habría que partirlo por responsabilidad, pero nunca fue prioridad.
+`HourLogService` conserva los casos de uso de creación, acceso y revisión. Los reportes están
+en `HourLogReportService`, la exportación CSV en `HourLogExportService` y las notificaciones
+del tutor detrás del puerto `HOUR_LOG_NOTIFIER`, implementado por `HourLogNotificationService`.
+Cada unidad tiene pruebas propias; la API HTTP y los tests existentes no requieren cambios.
 
 ## D-03 · El módulo de evaluaciones no tiene tests
 
@@ -42,12 +41,20 @@ Cero. Lo hicimos en la última semana y no alcanzamos. Es el módulo que más ba
 del proyecto. Si vas a tocar rúbricas o scores, escribe los tests primero — nadie sabe qué se
 rompe.
 
-## D-04 · La lista de postulaciones va lenta
+## D-04 · La lista de postulaciones va lenta — RESUELTO
 
 `src/application/application.service.ts`, método `listByOffer`.
 
-Con menos de 200 postulaciones no se nota. Arriba de eso, la pantalla de la empresa tarda
-varios segundos. Sospechamos que es cómo traemos los estudiantes, pero no lo medimos.
+La sospecha era correcta: el método pedía la lista y después una consulta por cada
+candidato, así que el costo crecía con el número de postulantes. Medido sobre Postgres
+local: 200 postulaciones eran 201 consultas y 136 ms; 1.000 eran 1.001 consultas y 690 ms.
+
+Ahora el candidato viaja en la misma consulta de la lista (`include`), y son 2 consultas
+siempre: 9 ms con 200 postulaciones y 14 ms con 1.000. La respuesta no cambió de forma y
+del candidato sigue viajando solo `PUBLIC_USER`.
+
+La prueba que lo sostiene es `src/application/application.list-by-offer.integration.spec.ts`:
+mide la misma pantalla con 5 y con 200 postulantes y exige que haga las mismas consultas.
 
 ## D-05 · `calculateAccreditationStatus` da miedo tocarla
 
@@ -58,13 +65,16 @@ acreditación adentro. Funciona — hasta donde sabemos — pero solo hay dos te
 cualquier cambio es a ciegas. Si te toca modificar reglas de acreditación, escribe primero
 tests de los casos que hoy funcionan.
 
-## D-06 · La validación de horas está en tres lados
+## D-06 · La validación de horas estaba en tres lados — RESUELTO en el back
 
-`src/hour-log/dto/create-hour-log.dto.ts`, `src/hour-log/hour-log.service.ts` y el formulario
-del frontend.
+La regla vive ahora en `src/hour-log/hour-log.rules.ts` (`HOUR_LOG_LIMITS`: 0.5 a 8 horas por
+registro). La usan el DTO, el servicio (crear y exportar) y la sincronización. El valor lo
+confirmó la coordinación de vinculación. Las copias anteriores eran: DTO con tope 12, `create`
+y `exportRows` con tope 10, y la sincronización sin límite. El frontend tiene su espejo en
+`src/lib/hour-log-rules.ts`; cambiar el límite exige cambiar ambos repos.
 
-Y ya divergieron: el DTO acepta hasta 12 horas por registro y el servicio corta en 10. El
-formulario tiene su propia versión. Nadie recuerda cuál es la correcta.
+Tests: `src/hour-log/hour-log.rules.spec.ts`, `src/hour-log/hour-log.service.spec.ts` y
+`src/sync/sync.service.spec.ts`.
 
 ## D-07 · `JWT_SECRET` tiene un fallback hardcodeado — RESUELTO
 

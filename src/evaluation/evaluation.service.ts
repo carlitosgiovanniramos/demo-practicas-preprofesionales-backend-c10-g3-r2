@@ -2,6 +2,7 @@ import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/commo
 import type { Placement } from '@prisma/client'
 import { EvaluationKind, Role } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
+import { canAccessPlacement } from '../placement/placement-access'
 import type { CreateEvaluationDto } from './dto/create-evaluation.dto'
 
 @Injectable()
@@ -67,8 +68,9 @@ export class EvaluationService {
     const placement = await this.prisma.placement.findUnique({ where: { id: placementId } })
     if (!placement) throw new NotFoundException('placement no encontrado')
 
-    const allowed = role === Role.COORDINATOR || placement.studentId === userId || placement.tutorId === userId
-    if (!allowed) throw new ForbiddenException('no tienes acceso a las evaluaciones de este placement')
+    if (!canAccessPlacement(placement, userId, role)) {
+      throw new ForbiddenException('no tienes acceso a las evaluaciones de este placement')
+    }
 
     return this.prisma.evaluation.findMany({
       where: { placementId, deletedAt: null },
