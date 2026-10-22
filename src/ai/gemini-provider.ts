@@ -53,7 +53,7 @@ export class GeminiTextProvider implements AiTextProvider {
     } catch {
       throw new AiUnavailableError('no se pudo contactar a Gemini')
     }
-    if (!response.ok) throw new AiUnavailableError(`Gemini respondió ${response.status}`)
+    if (!response.ok) throw new AiUnavailableError(`Gemini respondió ${response.status}`, response.status)
 
     const body = (await response.json()) as GeminiResponse
     const candidate = body.candidates?.[0]
