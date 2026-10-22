@@ -91,7 +91,7 @@ export class HourLogReportService {
   }
 
   private isoWeekLabel(date: Date): string {
-    const copy = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+    const copy = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
     const isoDayNumber = copy.getUTCDay() === 0 ? 7 : copy.getUTCDay()
     copy.setUTCDate(copy.getUTCDate() + 4 - isoDayNumber)
 

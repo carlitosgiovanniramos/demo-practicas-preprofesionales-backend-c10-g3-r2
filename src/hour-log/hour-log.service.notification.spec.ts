@@ -8,6 +8,15 @@ const prisma = {
   hourLog: { create: vi.fn() },
 }
 
+const activePlacement = {
+  id: 1,
+  studentId: 5,
+  tutorId: 7,
+  status: PlacementStatus.ACTIVE,
+  startDate: new Date('2026-03-01'),
+  endDate: new Date('2026-07-31'),
+}
+
 describe('HourLogService notifications', () => {
   let notifyTutor: ReturnType<typeof vi.fn>
   let service: HourLogService
@@ -19,11 +28,11 @@ describe('HourLogService notifications', () => {
   })
 
   it('notifies the assigned tutor after the record has been persisted', async () => {
-    prisma.placement.findUnique.mockResolvedValue({ id: 1, studentId: 5, tutorId: 7, status: PlacementStatus.ACTIVE })
+    prisma.placement.findUnique.mockResolvedValue(activePlacement)
     prisma.hourLog.create.mockImplementation(({ data }) => Promise.resolve({ id: 99, ...data }))
 
     await service.create(
-      { placementId: 1, date: new Date('2026-04-01'), startTime: '08:00', endTime: '12:00', hours: 4, activity: 'Soporte' },
+      { placementId: 1, date: '2026-04-01', startTime: '08:00', endTime: '12:00', hours: 4, activity: 'Soporte' },
       5,
     )
 
@@ -32,12 +41,12 @@ describe('HourLogService notifications', () => {
   })
 
   it('does not notify when persistence fails', async () => {
-    prisma.placement.findUnique.mockResolvedValue({ id: 1, studentId: 5, tutorId: 7, status: PlacementStatus.ACTIVE })
+    prisma.placement.findUnique.mockResolvedValue(activePlacement)
     prisma.hourLog.create.mockRejectedValue(new Error('database unavailable'))
 
     await expect(
       service.create(
-        { placementId: 1, date: new Date('2026-04-01'), startTime: '08:00', endTime: '12:00', hours: 4, activity: 'Soporte' },
+        { placementId: 1, date: '2026-04-01', startTime: '08:00', endTime: '12:00', hours: 4, activity: 'Soporte' },
         5,
       ),
     ).rejects.toThrow('database unavailable')

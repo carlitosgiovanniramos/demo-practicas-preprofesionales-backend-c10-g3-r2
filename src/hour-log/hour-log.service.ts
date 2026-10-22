@@ -5,6 +5,7 @@ import type { CreateHourLogDto } from './dto/create-hour-log.dto'
 import { canAccessPlacement } from '../placement/placement-access'
 import { hourLogRangeError } from './hour-log.rules'
 import { HOUR_LOG_NOTIFIER, type HourLogNotifier } from './hour-log-notification.service'
+import { normalizeHourLogDate } from './hour-log.date'
 
 // G3-22: la creación, revisión, acceso, reportes, CSV y notificaciones
 // se delegan a unidades enfocadas en cada responsabilidad.
@@ -36,11 +37,11 @@ export class HourLogService {
     const rangeError = hourLogRangeError(dto)
     if (rangeError) throw new BadRequestException(rangeError)
 
-    // La fecha del registro llega desde el cliente y se persiste tal como fue recibida.
+    const date = normalizeHourLogDate(dto.date, placement)
     const created = await this.prisma.hourLog.create({
       data: {
         placementId: dto.placementId,
-        date: dto.date,
+        date,
         startTime: dto.startTime,
         endTime: dto.endTime,
         hours: dto.hours,

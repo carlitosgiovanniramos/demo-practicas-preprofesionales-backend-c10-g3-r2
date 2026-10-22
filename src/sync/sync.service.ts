@@ -11,6 +11,7 @@ import {
 import { buildKeysetWhere } from './keyset'
 import type { SyncOperationInput, SyncOperationResult } from './dto/push.dto'
 import { hourLogRangeError } from '../hour-log/hour-log.rules'
+import { HourLogDateError, normalizeHourLogDate } from '../hour-log/hour-log.date'
 
 // D-06: el push aplica la misma regla de horas que el DTO y el servicio.
 function hourRangeReason(payload: Record<string, unknown>): string | null {
@@ -22,9 +23,9 @@ function hourRangeReason(payload: Record<string, unknown>): string | null {
 }
 
 // Campos editables de una hora, compartidos por crear y actualizar.
-function hourLogFields(payload: Record<string, unknown>) {
+function hourLogFields(payload: Record<string, unknown>, placement: { startDate: Date; endDate: Date }) {
   return {
-    date: new Date(String(payload.date)),
+    date: normalizeHourLogDate(payload.date, placement),
     startTime: String(payload.startTime),
     endTime: String(payload.endTime),
     hours: Number(payload.hours),
@@ -212,7 +213,12 @@ export class SyncService {
   // tablas.
   private async applyAndRecord(userId: number, op: SyncOperationInput): Promise<SyncOperationResult> {
     return this.prisma.$transaction(async (tx) => {
-      const result = await this.applyOperation(tx, userId, op)
+      const result = await this.applyOperation(tx, userId, op).catch((err: unknown): SyncOperationResult => {
+        // Solo el rechazo de fecha es de negocio y se persiste; otros BadRequest
+        // son infraestructura y siguen el camino no cacheado de recoverFromFailedApply.
+        if (!(err instanceof HourLogDateError)) throw err
+        return { clientOpId: op.clientOpId, status: 'rejected', server: null, reason: err.message }
+      })
       await tx.syncOperation.create({
         data: { clientOpId: op.clientOpId, userId, response: result as unknown as object },
       })
@@ -292,7 +298,7 @@ export class SyncService {
     }
 
     if (op.op === 'update') {
-      return this.applyUpdate(client, op)
+      return this.applyUpdate(client, op, existing.placement)
     }
 
     const deleted = await client.hourLog.update({
@@ -310,7 +316,7 @@ export class SyncService {
     const created = await client.hourLog.create({
       data: {
         placementId: Number(op.payload.placementId),
-        ...hourLogFields(op.payload),
+        ...hourLogFields(op.payload, placement),
         status: 'SUBMITTED',
       },
     })
@@ -318,10 +324,14 @@ export class SyncService {
   }
 
   // La actualización aplica los campos recibidos y avanza version.
-  private async applyUpdate(client: OperationClient, op: SyncOperationInput): Promise<SyncOperationResult> {
+  private async applyUpdate(
+    client: OperationClient,
+    op: SyncOperationInput,
+    placement: { startDate: Date; endDate: Date },
+  ): Promise<SyncOperationResult> {
     const updated = await client.hourLog.update({
       where: { id: Number(op.payload.id) },
-      data: { ...hourLogFields(op.payload), version: { increment: 1 } },
+      data: { ...hourLogFields(op.payload, placement), version: { increment: 1 } },
     })
     return { clientOpId: op.clientOpId, status: 'applied', server: updated as never, reason: null }
   }
