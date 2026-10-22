@@ -1,8 +1,8 @@
 import { Module } from '@nestjs/common'
 import { HourLogModule } from '../hour-log/hour-log.module'
 import { PlacementModule } from '../placement/placement.module'
-import { AccreditationAiController } from './accreditation-ai.controller'
-import { AccreditationExplanationService } from './accreditation-explanation.service'
+import { ActionPlanController } from './action-plan.controller'
+import { ActionPlanService } from './action-plan.service'
 import { AI_TEXT_PROVIDER, AiUnavailableError, type AiTextProvider } from './ai-provider'
 import { AiController } from './ai.controller'
 import { GeminiTextProvider } from './gemini-provider'
@@ -17,7 +17,7 @@ const unconfiguredProvider: AiTextProvider = {
 
 @Module({
   imports: [HourLogModule, PlacementModule],
-  controllers: [AiController, AccreditationAiController],
+  controllers: [AiController, ActionPlanController],
   providers: [
     {
       provide: AI_TEXT_PROVIDER,
@@ -28,7 +28,7 @@ const unconfiguredProvider: AiTextProvider = {
       },
     },
     WeeklySummaryService,
-    AccreditationExplanationService,
+    ActionPlanService,
   ],
   exports: [AI_TEXT_PROVIDER],
 })

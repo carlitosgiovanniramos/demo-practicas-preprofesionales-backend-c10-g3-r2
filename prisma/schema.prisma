@@ -176,10 +176,21 @@ model Placement {
   hourLogs    HourLog[]
   evaluations Evaluation[]
   documents   Document[]
+  actionPlan  ActionPlan?
 
   @@index([studentId, status])
   @@index([updatedAt, id])
   @@map("placements")
+}
+
+// Plan de acción de acreditación: uno por placement, editado por el coordinador y solo leído por el estudiante.
+model ActionPlan {
+  placementId Int       @id
+  content     String
+  updatedAt   DateTime  @updatedAt
+  placement   Placement @relation(fields: [placementId], references: [id])
+
+  @@map("action_plans")
 }
 
 model HourLog {
