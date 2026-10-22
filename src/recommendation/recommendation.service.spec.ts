@@ -58,6 +58,7 @@ function build(applied: number[], rows: OfferRow[] = offers) {
       offer: { findMany: offerFindMany },
     } as never,
     { generateText } as never,
+    { assertOfferOwnership: vi.fn() } as never,
   )
   return { service, applicationFindMany, offerFindMany, generateText }
 }
@@ -130,5 +131,95 @@ describe('RecommendationService.forStudent', () => {
     const { service, generateText } = build([1])
     generateText.mockRejectedValueOnce(new AiUnavailableError('MiniMax respondió 429', 429))
     await expect(service.forStudent(9, 5, true)).rejects.toBeInstanceOf(ServiceUnavailableException)
+  })
+})
+
+// Oferta idéntica a la 1: un postulante que solo tiene esta debe tener afinidad 1 con la 1.
+const twinOfOffer1: OfferRow = {
+  id: 5,
+  title: 'Desarrollador React frontend',
+  description: 'Interfaces web con React y componentes reutilizables',
+  modality: 'remoto',
+  status: OfferStatus.PUBLISHED,
+  publishedAt: new Date('2026-03-12T00:00:00.000Z'),
+}
+
+interface ApplicantHistory {
+  studentId: number
+  offerIds: number[]
+}
+
+function buildInsights(measuredOfferId: number, applicants: ApplicantHistory[], rows: OfferRow[] = [...offers, twinOfOffer1]) {
+  const applicationFindMany = vi.fn(async (args: { where: Record<string, unknown> }) => {
+    if ('offerId' in args.where) {
+      return applicants.filter((a) => a.offerIds.includes(measuredOfferId)).map((a) => ({ studentId: a.studentId }))
+    }
+    return applicants.flatMap((a) => a.offerIds.map((offerId) => ({ studentId: a.studentId, offerId })))
+  })
+  const assertOfferOwnership = vi.fn(async () => ({ id: measuredOfferId }))
+  const service = new RecommendationService(
+    { application: { findMany: applicationFindMany }, offer: { findMany: vi.fn(async () => rows) } } as never,
+    { generateText: vi.fn() } as never,
+    { assertOfferOwnership } as never,
+  )
+  return { service, applicationFindMany, assertOfferOwnership }
+}
+
+describe('RecommendationService.offerInsights', () => {
+  it('verifica que la empresa sea dueña de la oferta antes de leer postulantes', async () => {
+    const { service, applicationFindMany, assertOfferOwnership } = buildInsights(1, [])
+    await service.offerInsights(1, 77, 'COMPANY')
+    expect(assertOfferOwnership).toHaveBeenCalledWith(1, 77, 'COMPANY')
+    expect(applicationFindMany).toHaveBeenCalled()
+  })
+
+  it('no lee postulantes si la verificación de dueño falla', async () => {
+    const applicationFindMany = vi.fn()
+    const service = new RecommendationService(
+      { application: { findMany: applicationFindMany }, offer: { findMany: vi.fn() } } as never,
+      { generateText: vi.fn() } as never,
+      { assertOfferOwnership: vi.fn(async () => Promise.reject(new Error('ajena'))) } as never,
+    )
+    await expect(service.offerInsights(1, 77, 'COMPANY')).rejects.toThrow('ajena')
+    expect(applicationFindMany).not.toHaveBeenCalled()
+  })
+
+  it('cuenta postulantes y los que tienen historial además de esta oferta', async () => {
+    const { service } = buildInsights(1, [
+      { studentId: 5, offerIds: [1, 2] },
+      { studentId: 6, offerIds: [1] },
+    ])
+    const result = await service.offerInsights(1, 77, 'COMPANY')
+    expect(result.applicantCount).toBe(2)
+    expect(result.withHistoryCount).toBe(1)
+  })
+
+  it('sin postulantes con historial la afinidad es null y no hay términos', async () => {
+    const { service } = buildInsights(1, [{ studentId: 6, offerIds: [1] }])
+    const result = await service.offerInsights(1, 77, 'COMPANY')
+    expect(result.averageFit).toBeNull()
+    expect(result.strongFitCount).toBe(0)
+    expect(result.topTerms).toEqual([])
+  })
+
+  it('promedia la afinidad de los postulantes con historial y cuenta los de afinidad alta', async () => {
+    const { service } = buildInsights(1, [
+      { studentId: 5, offerIds: [3, 1] },
+      { studentId: 8, offerIds: [5, 1] },
+    ])
+    const result = await service.offerInsights(1, 77, 'COMPANY')
+    expect(result.withHistoryCount).toBe(2)
+    expect(result.averageFit).toBe(0.5)
+    expect(result.strongFitCount).toBe(1)
+  })
+
+  it('sugiere términos compartidos entre la oferta y el perfil de los postulantes', async () => {
+    const { service } = buildInsights(1, [
+      { studentId: 5, offerIds: [3, 1] },
+      { studentId: 8, offerIds: [5, 1] },
+    ])
+    const result = await service.offerInsights(1, 77, 'COMPANY')
+    expect(result.topTerms).toContain('react')
+    expect(result.topTerms.length).toBeLessThanOrEqual(5)
   })
 })

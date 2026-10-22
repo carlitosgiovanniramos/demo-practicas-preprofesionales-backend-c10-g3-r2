@@ -1,4 +1,4 @@
-import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common'
+import { Controller, Get, Param, ParseIntPipe, Query, Req, UseGuards } from '@nestjs/common'
 import { Role } from '@prisma/client'
 import { Roles } from '../auth/decorators/roles.decorator'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
@@ -16,5 +16,15 @@ export class RecommendationController {
   @Roles(Role.STUDENT)
   offers(@Query() query: RecommendationQueryDto, @Req() req: { user: { sub: number } }) {
     return this.service.forStudent(req.user.sub, query.limit, query.explain === 'true')
+  }
+
+  /** Afinidad de los postulantes de una oferta propia con esa oferta (métrica para la empresa). */
+  @Get('offers/:offerId/insights')
+  @Roles(Role.COMPANY, Role.COORDINATOR)
+  insights(
+    @Param('offerId', ParseIntPipe) offerId: number,
+    @Req() req: { user: { sub: number; role: Role } },
+  ) {
+    return this.service.offerInsights(offerId, req.user.sub, req.user.role)
   }
 }
