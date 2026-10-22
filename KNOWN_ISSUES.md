@@ -26,13 +26,12 @@ Sigue pendiente el lado `src/offline/sync/push.ts` del front (repo aparte).
 Workaround actual (ya no debería hacer falta para hour logs): el coordinador borra los
 duplicados a mano.
 
-## D-02 · `HourLogService` se nos fue de las manos
+## D-02 · `HourLogService` se nos fue de las manos — RESUELTO
 
-`src/hour-log/hour-log.service.ts`
-
-Empezó siendo el CRUD de horas y terminó haciendo validación, persistencia, notificación al
-tutor y agregación de reportes. Pasa las 300 líneas. Cada vez que hay que tocar algo ahí, hay
-que leerlo entero. Habría que partirlo por responsabilidad, pero nunca fue prioridad.
+`HourLogService` conserva los casos de uso de creación, acceso y revisión. Los reportes están
+en `HourLogReportService`, la exportación CSV en `HourLogExportService` y las notificaciones
+del tutor detrás del puerto `HOUR_LOG_NOTIFIER`, implementado por `HourLogNotificationService`.
+Cada unidad tiene pruebas propias; la API HTTP y los tests existentes no requieren cambios.
 
 ## D-03 · El módulo de evaluaciones no tiene tests
 

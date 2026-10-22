@@ -77,6 +77,23 @@ describe('HourLogReportService', () => {
     await expect(service.weeklySummary(4)).resolves.toEqual([])
   })
 
+  it('returns multiple ISO weeks in chronological order', async () => {
+    prisma.placement.findUnique.mockResolvedValue({
+      startDate: new Date(2026, 0, 1, 12),
+      endDate: new Date(2026, 0, 15, 12),
+      requiredHours: 14,
+    })
+    prisma.hourLog.findMany.mockResolvedValue([
+      { date: new Date(2026, 0, 12, 12), status: HourLogStatus.APPROVED, hours: 2 },
+      { date: new Date(2026, 0, 5, 12), status: HourLogStatus.APPROVED, hours: 7 },
+    ])
+
+    await expect(service.weeklySummary(4)).resolves.toEqual([
+      { week: '2026-W02', approvedHours: 7, submittedHours: 0, logsCount: 1, expectedHoursPercentage: 100 },
+      { week: '2026-W03', approvedHours: 2, submittedHours: 0, logsCount: 1, expectedHoursPercentage: 29 },
+    ])
+  })
+
   it('rejects a weekly summary for a missing placement', async () => {
     prisma.placement.findUnique.mockResolvedValue(null)
 
