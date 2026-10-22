@@ -1,4 +1,5 @@
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common'
+import { Prisma } from '@prisma/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApplicationService } from './application.service'
 
@@ -37,6 +38,43 @@ describe('ApplicationService', () => {
         data: { offerId: 1, studentId: 10, motivation: 'Quiero aprender', status: 'SUBMITTED' },
       })
       expect(result.id).toBe(9)
+    })
+
+    it('no crea otra postulación mientras la anterior esté activa, ni tras aceptación', async () => {
+      for (const status of ['SUBMITTED', 'INTERVIEW', 'ACCEPTED'] as const) {
+        prisma.application.findUnique.mockResolvedValueOnce({ id: 3, offerId: 1, studentId: 10, status })
+        await expect(service.apply(1, 10, 'Quiero aprender')).rejects.toBeInstanceOf(ConflictException)
+      }
+      expect(prisma.application.create).not.toHaveBeenCalled()
+      expect(prisma.application.update).not.toHaveBeenCalled()
+    })
+
+    it('vuelve a postular tras un rechazo reactivando la misma postulación', async () => {
+      prisma.application.findUnique.mockResolvedValueOnce({ id: 3, offerId: 1, studentId: 10, status: 'REJECTED' })
+      prisma.application.update.mockImplementation(({ data }) => Promise.resolve({ id: 3, ...data }))
+
+      const result = await service.apply(1, 10, 'Ahora con más experiencia')
+
+      expect(prisma.application.update).toHaveBeenCalledWith({
+        where: { id: 3 },
+        data: {
+          status: 'SUBMITTED',
+          motivation: 'Ahora con más experiencia',
+          submittedAt: expect.any(Date),
+          decidedAt: null,
+        },
+      })
+      expect(prisma.application.create).not.toHaveBeenCalled()
+      expect(result.id).toBe(3)
+    })
+
+    it('traduce la carrera de dos postulaciones simultáneas en conflicto', async () => {
+      prisma.application.findUnique.mockResolvedValueOnce(null)
+      prisma.application.create.mockRejectedValueOnce(
+        new Prisma.PrismaClientKnownRequestError('Unique constraint failed', { code: 'P2002', clientVersion: '6' }),
+      )
+
+      await expect(service.apply(1, 10, 'Quiero aprender')).rejects.toBeInstanceOf(ConflictException)
     })
   })
 

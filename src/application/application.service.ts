@@ -1,5 +1,5 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
-import { ApplicationStatus, Role } from '@prisma/client'
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
+import { ApplicationStatus, Prisma, Role } from '@prisma/client'
 import { PUBLIC_USER } from '../common/public-user'
 import { PUBLIC_COMPANY } from '../company/public-company'
 import { OfferService } from '../offer/offer.service'
@@ -29,10 +29,35 @@ export class ApplicationService {
     private readonly offers: OfferService,
   ) {}
 
-  apply(offerId: number, studentId: number, motivation: string) {
-    return this.prisma.application.create({
-      data: { offerId, studentId, motivation, status: ApplicationStatus.SUBMITTED },
+  /**
+   * Una postulación por estudiante y oferta. Solo se puede volver a postular después de un
+   * rechazo, y entonces se reactiva la misma fila (la unicidad de offerId+studentId se conserva).
+   * Una postulación activa o aceptada bloquea cualquier nuevo intento.
+   */
+  async apply(offerId: number, studentId: number, motivation: string) {
+    const previous = await this.prisma.application.findUnique({
+      where: { offerId_studentId: { offerId, studentId } },
     })
+    if (previous && previous.status !== ApplicationStatus.REJECTED) {
+      throw new ConflictException('ya postulaste a esta oferta')
+    }
+    if (previous) {
+      return this.prisma.application.update({
+        where: { id: previous.id },
+        data: { status: ApplicationStatus.SUBMITTED, motivation, submittedAt: new Date(), decidedAt: null },
+      })
+    }
+    try {
+      return await this.prisma.application.create({
+        data: { offerId, studentId, motivation, status: ApplicationStatus.SUBMITTED },
+      })
+    } catch (error) {
+      // Dos envíos simultáneos: el que pierde la carrera choca con la unicidad y recibe el mismo conflicto.
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new ConflictException('ya postulaste a esta oferta')
+      }
+      throw error
+    }
   }
 
   // Postulaciones del propio estudiante, con la oferta y la empresa incluidas
