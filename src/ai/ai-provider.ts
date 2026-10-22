@@ -1,4 +1,6 @@
-export const AI_TEXT_PROVIDER = Symbol('AI_TEXT_PROVIDER')
+/** Cada tarea tiene su propio proveedor: generar textos elaborados y clasificar (JSON corto). */
+export const AI_GENERATION_PROVIDER = Symbol('AI_GENERATION_PROVIDER')
+export const AI_CLASSIFICATION_PROVIDER = Symbol('AI_CLASSIFICATION_PROVIDER')
 
 /** Puerto del proveedor de texto. El dominio depende de esta interfaz, no de un proveedor concreto. */
 export interface AiTextProvider {

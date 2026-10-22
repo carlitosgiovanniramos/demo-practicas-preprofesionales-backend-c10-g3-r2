@@ -2,7 +2,7 @@ import { BadRequestException, Inject, Injectable, ServiceUnavailableException } 
 import { Role } from '@prisma/client'
 import { HourLogService } from '../hour-log/hour-log.service'
 import { PrismaService } from '../prisma/prisma.service'
-import { AI_TEXT_PROVIDER, AiUnavailableError, type AiTextProvider } from './ai-provider'
+import { AI_GENERATION_PROVIDER, AiUnavailableError, type AiTextProvider } from './ai-provider'
 import { buildWeeklySummaryPrompt, weekRange } from './weekly-summary'
 
 export interface WeeklySummaryResult {
@@ -18,7 +18,7 @@ export class WeeklySummaryService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly hourLogs: HourLogService,
-    @Inject(AI_TEXT_PROVIDER) private readonly provider: AiTextProvider,
+    @Inject(AI_GENERATION_PROVIDER) private readonly provider: AiTextProvider,
   ) {}
 
   /** Borrador del informe semanal a partir de las jornadas reales de esa semana. */

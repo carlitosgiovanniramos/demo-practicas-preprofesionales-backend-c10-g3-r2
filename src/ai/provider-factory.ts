@@ -3,18 +3,22 @@ import { FallbackTextProvider } from './fallback-provider'
 import { GeminiTextProvider } from './gemini-provider'
 import { MiniMaxTextProvider } from './minimax-provider'
 
+/** Orden por defecto de cada tarea: textos elaborados con Gemini, clasificación JSON con MiniMax. */
+export const DEFAULT_GENERATION_ORDER = 'gemini'
+export const DEFAULT_CLASSIFICATION_ORDER = 'minimax'
+
 /**
- * Arma el proveedor a partir del entorno. `AI_PROVIDERS` define el orden (por defecto `gemini`).
+ * Arma el proveedor de una tarea a partir de su orden (p. ej. `gemini` o `minimax,gemini`).
  * Solo entran los proveedores con clave. Sin ninguno, responde 503 en cada llamada (nunca texto falso).
  */
-export function buildTextProvider(env: NodeJS.ProcessEnv = process.env): AiTextProvider {
-  const order = (env.AI_PROVIDERS || 'gemini')
+export function buildTextProvider(order: string, env: NodeJS.ProcessEnv = process.env): AiTextProvider {
+  const names = order
     .split(',')
     .map((name) => name.trim().toLowerCase())
     .filter(Boolean)
 
   const providers: AiTextProvider[] = []
-  for (const name of order) {
+  for (const name of names) {
     if (name === 'gemini' && env.GEMINI_API_KEY) {
       providers.push(new GeminiTextProvider(env.GEMINI_API_KEY, env.GEMINI_MODEL || undefined))
     }
@@ -26,7 +30,7 @@ export function buildTextProvider(env: NodeJS.ProcessEnv = process.env): AiTextP
   if (providers.length === 0) {
     return {
       generateText: async () => {
-        throw new AiUnavailableError('no hay clave de IA configurada (GEMINI_API_KEY o MINIMAX_API_KEY)')
+        throw new AiUnavailableError('no hay clave de IA configurada para esta tarea')
       },
     }
   }

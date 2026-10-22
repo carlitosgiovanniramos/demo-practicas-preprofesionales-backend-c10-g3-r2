@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import { AiUnavailableError, type AiTextProvider } from './ai-provider'
 import { FallbackTextProvider } from './fallback-provider'
-import { buildTextProvider } from './provider-factory'
+import { DEFAULT_CLASSIFICATION_ORDER, DEFAULT_GENERATION_ORDER, buildTextProvider } from './provider-factory'
 import { MiniMaxTextProvider } from './minimax-provider'
 
-const okText = (text: string) => new Response(JSON.stringify({ choices: [{ message: { content: text }, finish_reason: 'stop' }] }), { status: 200 })
+const okText = (text: string) =>
+  new Response(JSON.stringify({ choices: [{ message: { content: text }, finish_reason: 'stop' }] }), { status: 200 })
 
 describe('MiniMaxTextProvider', () => {
   it('envía la clave Bearer, desactiva el razonamiento y devuelve el texto', async () => {
@@ -29,7 +30,10 @@ describe('MiniMaxTextProvider', () => {
 
   it('no devuelve un texto cortado por límite de tokens', async () => {
     const fetchFn = vi.fn(
-      async () => new Response(JSON.stringify({ choices: [{ message: { content: 'a med' }, finish_reason: 'length' }] }), { status: 200 }),
+      async () =>
+        new Response(JSON.stringify({ choices: [{ message: { content: 'a med' }, finish_reason: 'length' }] }), {
+          status: 200,
+        }),
     )
     const provider = new MiniMaxTextProvider('k', undefined, fetchFn as unknown as typeof fetch)
     await expect(provider.generateText('x')).rejects.toThrow('quedó incompleta')
@@ -37,23 +41,26 @@ describe('MiniMaxTextProvider', () => {
 })
 
 describe('buildTextProvider', () => {
-  it('sin claves responde 503 en cada llamada', async () => {
-    const provider = buildTextProvider({})
-    await expect(provider.generateText('x')).rejects.toBeInstanceOf(AiUnavailableError)
+  it('sin clave para la tarea responde 503 en cada llamada', async () => {
+    await expect(buildTextProvider('gemini', {}).generateText('x')).rejects.toBeInstanceOf(AiUnavailableError)
   })
 
   it('con una sola clave usa ese proveedor directamente', () => {
-    expect(buildTextProvider({ GEMINI_API_KEY: 'g' })).not.toBeInstanceOf(FallbackTextProvider)
+    expect(buildTextProvider('gemini', { GEMINI_API_KEY: 'g' })).not.toBeInstanceOf(FallbackTextProvider)
   })
 
-  it('con ambas claves y AI_PROVIDERS=gemini,minimax crea un respaldo', () => {
-    const provider = buildTextProvider({ AI_PROVIDERS: 'gemini,minimax', GEMINI_API_KEY: 'g', MINIMAX_API_KEY: 'm' })
+  it('con dos proveedores en el orden crea un respaldo entre ellos', () => {
+    const provider = buildTextProvider('gemini,minimax', { GEMINI_API_KEY: 'g', MINIMAX_API_KEY: 'm' })
     expect(provider).toBeInstanceOf(FallbackTextProvider)
   })
 
   it('ignora un proveedor sin clave aunque aparezca en el orden', () => {
-    const provider = buildTextProvider({ AI_PROVIDERS: 'minimax,gemini', GEMINI_API_KEY: 'g' })
-    expect(provider).not.toBeInstanceOf(FallbackTextProvider)
+    expect(buildTextProvider('minimax,gemini', { GEMINI_API_KEY: 'g' })).not.toBeInstanceOf(FallbackTextProvider)
+  })
+
+  it('los valores por defecto separan generación (Gemini) de clasificación (MiniMax)', () => {
+    expect(DEFAULT_GENERATION_ORDER).toBe('gemini')
+    expect(DEFAULT_CLASSIFICATION_ORDER).toBe('minimax')
   })
 })
 
