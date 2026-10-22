@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { HourLogExportService } from './hour-log-export.service'
+import { HOUR_LOG_HOURS_MESSAGE, HOUR_LOG_LIMITS } from './hour-log.rules'
 
 const prisma = { hourLog: { findMany: vi.fn() } }
 
@@ -53,10 +54,16 @@ describe('HourLogExportService', () => {
     await expect(service.exportRows(7)).rejects.toThrow(BadRequestException)
   })
 
+  it('rejects 9 hours with the shared D-06 message (the old exporter allowed up to 10)', async () => {
+    prisma.hourLog.findMany.mockResolvedValue([validLog({ hours: HOUR_LOG_LIMITS.maxHours + 1 })])
+
+    await expect(service.exportRows(7)).rejects.toThrow(HOUR_LOG_HOURS_MESSAGE)
+  })
+
   it('rejects stored records whose end time is not after their start time', async () => {
     prisma.hourLog.findMany.mockResolvedValue([validLog({ startTime: '12:00', endTime: '08:00' })])
 
-    await expect(service.exportRows(7)).rejects.toThrow('la hora de inicio debe ser anterior a la de fin')
+    await expect(service.exportRows(7)).rejects.toThrow('La hora de fin debe ser posterior a la de inicio')
   })
 
   it('quotes an activity that contains only a double quote', async () => {
