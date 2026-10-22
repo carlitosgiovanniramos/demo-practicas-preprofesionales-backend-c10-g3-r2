@@ -29,7 +29,10 @@ export class HourLogExportService {
       ])
     }
 
-    const totalHours = logs.reduce((total, log) => total + log.hours, 0)
+    const totalHours = rows.slice(1).reduce((total, row) => {
+      const hours = row[4]
+      return typeof hours === 'number' ? total + hours : total
+    }, 0)
     rows.push(['', '', '', '', totalHours, 'TOTAL', '', ''])
     return rows
   }
