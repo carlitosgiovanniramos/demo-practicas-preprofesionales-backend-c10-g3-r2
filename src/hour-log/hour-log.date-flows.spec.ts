@@ -5,6 +5,7 @@ import type { SyncOperationInput } from '../sync/dto/push.dto'
 import { SyncService } from '../sync/sync.service'
 import { CreateHourLogDto } from './dto/create-hour-log.dto'
 import { CALENDAR_DATE_MESSAGE } from './hour-log.date'
+import { HourLogExportService } from './hour-log-export.service'
 import { HourLogReportService } from './hour-log-report.service'
 import { HourLogService } from './hour-log.service'
 
@@ -22,6 +23,7 @@ const prisma = {
 }
 const hours = new HourLogService(prisma as never)
 const reports = new HourLogReportService(prisma as never)
+const exports = new HourLogExportService(prisma as never)
 const sync = new SyncService(prisma as never)
 const pipe = new ValidationPipe({ whitelist: true, transform: true })
 const dto = (date: unknown) => ({ placementId: 1, date, startTime: '08:00', endTime: '12:00', hours: 4, activity: 'Soporte' })
@@ -123,7 +125,7 @@ describe('fecha: HTTP, sync y compatibilidad', () => {
       vi.stubEnv('TZ', 'America/Los_Angeles')
       expect(await hours.listForPlacement(1)).toEqual([old])
       expect((await sync.pull(5, undefined, 200)).changes.hourLogs).toEqual([old])
-      expect((await hours.exportRows(1))[1][1]).toBe('2026-03-02')
+      expect((await exports.exportRows(1))[1][1]).toBe('2026-03-02')
       expect((await reports.weeklySummary(1))[0].week).toBe('2026-W10')
       expect(prisma.hourLog.update).not.toHaveBeenCalled()
       expect(prisma.hourLog.create).not.toHaveBeenCalled()

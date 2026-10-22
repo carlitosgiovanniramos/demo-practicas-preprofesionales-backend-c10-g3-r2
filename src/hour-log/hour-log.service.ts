@@ -6,16 +6,8 @@ import { canAccessPlacement } from '../placement/placement-access'
 import { hourLogRangeError } from './hour-log.rules'
 import { normalizeHourLogDate } from './hour-log.date'
 
-// D-02 (deuda sembrada, documentada a propósito): este servicio es un
-// "god service". `create` valida el DTO, persiste el registro y dispara
-// una notificación al tutor; `review` maneja la máquina de estados de
-// aprobación; `approvedHours`/`progressReport`/`weeklySummary`/`exportRows`
-// agregan y transforman datos para reportes. Ese código convive en el mismo archivo
-// a propósito: no lo dividas en `HourLogValidationService`,
-// `HourLogNotificationService` ni `HourLogReportService`. El objetivo de
-// producto es que el equipo que reciba el template identifique el problema
-// de mantenibilidad y decida cómo (y cuándo) separarlo — no que nazca ya
-// separado.
+// G3-22: los reportes y la exportación CSV viven en servicios separados.
+// La notificación al tutor se aísla en la siguiente parte de esta cadena.
 @Injectable()
 export class HourLogService {
   constructor(private readonly prisma: PrismaService) {}
@@ -108,53 +100,4 @@ export class HourLogService {
     })
   }
 
-  // D-02: exporta el libro de horas a filas de CSV, en el mismo servicio
-  // que valida y persiste. Debería vivir en un `HourLogExportService`.
-  async exportRows(placementId: number): Promise<(string | number)[][]> {
-    const logs = await this.prisma.hourLog.findMany({
-      where: { placementId, deletedAt: null },
-      orderBy: { date: 'asc' },
-    })
-
-    const header = ['id', 'fecha', 'inicio', 'fin', 'horas', 'actividad', 'estado', 'revisadoPor']
-    const rows: (string | number)[][] = [header]
-
-    for (const dto of logs) {
-      // D-06: misma regla que en `create`, compartida desde hour-log.rules.
-      const rangeError = hourLogRangeError(dto)
-      if (rangeError) throw new BadRequestException(rangeError)
-
-      rows.push([
-        dto.id,
-        dto.date.toISOString().slice(0, 10),
-        dto.startTime,
-        dto.endTime,
-        dto.hours,
-        this.escapeCsvField(dto.activity),
-        dto.status,
-        dto.reviewedById ?? '',
-      ])
-    }
-
-    // Fila de totales al final del CSV. Se recorren las filas ya
-    // construidas en vez de reutilizar `approvedHours` — otra oportunidad
-    // perdida de reusar código en vez de recalcular a mano.
-    let totalHours = 0
-    for (const row of rows.slice(1)) {
-      const hoursCell = row[4]
-      if (typeof hoursCell === 'number') totalHours += hoursCell
-    }
-    rows.push(['', '', '', '', totalHours, 'TOTAL', '', ''])
-
-    return rows
-  }
-
-  // D-02: escapado de CSV a mano (RFC 4180 mínimo viable), otra
-  // responsabilidad más colgada del mismo servicio en vez de una utilidad
-  // compartida de exportación.
-  private escapeCsvField(value: string): string {
-    const needsQuoting = value.includes(',') || value.includes('"') || value.includes('\n')
-    if (!needsQuoting) return value
-    return `"${value.replace(/"/g, '""')}"`
-  }
 }
