@@ -3,8 +3,11 @@ import { FallbackTextProvider } from './fallback-provider'
 import { GeminiTextProvider } from './gemini-provider'
 import { MiniMaxTextProvider } from './minimax-provider'
 
-/** Orden por defecto de cada tarea: textos elaborados con Gemini, clasificación JSON con MiniMax. */
-export const DEFAULT_GENERATION_ORDER = 'gemini'
+/**
+ * Orden por defecto de cada tarea. La generación también va por MiniMax: Gemini cobra por uso y
+ * ya generó gasto en pruebas. Para volver a Gemini, AI_GENERATION_PROVIDERS=gemini.
+ */
+export const DEFAULT_GENERATION_ORDER = 'minimax'
 export const DEFAULT_CLASSIFICATION_ORDER = 'minimax'
 
 /**

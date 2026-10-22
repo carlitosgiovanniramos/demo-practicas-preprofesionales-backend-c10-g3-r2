@@ -59,7 +59,7 @@ describe('buildTextProvider', () => {
   })
 
   it('los valores por defecto separan generación (Gemini) de clasificación (MiniMax)', () => {
-    expect(DEFAULT_GENERATION_ORDER).toBe('gemini')
+    expect(DEFAULT_GENERATION_ORDER).toBe('minimax')
     expect(DEFAULT_CLASSIFICATION_ORDER).toBe('minimax')
   })
 })
